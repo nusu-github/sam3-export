@@ -1,0 +1,89 @@
+{
+  "fixture_version": "m3-interactive-image-pvs-v1",
+  "owner": "Export Tech Lead",
+  "official_source_commit": "cdff5a927beba49b6249c1e2973b29bd64f40b83",
+  "checkpoint_sha256": "9999e2341ceef5e136daa386eecb55cb414446a00ac2b55eb2dfd2f7c3cf8c9e",
+  "profile": {
+    "batch": 1,
+    "image_size": 1008,
+    "point_capacity": 16,
+    "box_capacity": 1,
+    "mask_size": 288,
+    "dtype": "float16",
+    "backend": "ONNX Runtime CUDAExecutionProvider",
+    "handoff": "CUDA OrtValue / IOBinding"
+  },
+  "image": {
+    "id": "truck",
+    "workspace_path": "sam3/assets/images/truck.jpg",
+    "sha256": "941715e721c8864324a1425b445ea4dde0498b995c45ddce0141a58971c6ff99"
+  },
+  "cases": [
+    {
+      "id": "prompt_zero_multimask3",
+      "points_xy": [],
+      "point_labels": [],
+      "box_xyxy": null,
+      "mask_source": null,
+      "multimask_output": true
+    },
+    {
+      "id": "point_one_multimask3",
+      "points_xy": [[900.0, 580.0]],
+      "point_labels": [1],
+      "box_xyxy": null,
+      "mask_source": null,
+      "multimask_output": true
+    },
+    {
+      "id": "box_one_single1",
+      "points_xy": [],
+      "point_labels": [],
+      "box_xyxy": [430.0, 270.0, 1420.0, 970.0],
+      "mask_source": null,
+      "multimask_output": false
+    },
+    {
+      "id": "point_sixteen_box_single1",
+      "points_xy": [
+        [500.0, 350.0], [600.0, 430.0], [700.0, 510.0], [800.0, 590.0],
+        [900.0, 670.0], [1000.0, 750.0], [1100.0, 830.0], [1200.0, 910.0],
+        [160.0, 120.0], [1640.0, 120.0], [160.0, 1080.0], [1640.0, 1080.0],
+        [300.0, 600.0], [1500.0, 600.0], [900.0, 120.0], [900.0, 1080.0]
+      ],
+      "point_labels": [1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0],
+      "box_xyxy": [430.0, 270.0, 1420.0, 970.0],
+      "mask_source": null,
+      "multimask_output": false
+    },
+    {
+      "id": "mask_only_single1",
+      "points_xy": [],
+      "point_labels": [],
+      "box_xyxy": null,
+      "mask_source": "fixture-radial-logits-v1",
+      "multimask_output": false
+    },
+    {
+      "id": "mixed_point_box_mask_single1",
+      "points_xy": [[900.0, 580.0], [250.0, 180.0]],
+      "point_labels": [1, 0],
+      "box_xyxy": [430.0, 270.0, 1420.0, 970.0],
+      "mask_source": "fixture-radial-logits-v1",
+      "multimask_output": false
+    }
+  ],
+  "repeated_click": {
+    "id": "repeated_click_multimask3_to_single1",
+    "first_points_xy": [[900.0, 580.0]],
+    "first_point_labels": [1],
+    "second_points_xy": [[900.0, 580.0], [1180.0, 710.0]],
+    "second_point_labels": [1, 1],
+    "mask_selection": "highest-score-index"
+  },
+  "measurement": {
+    "warmup": 2,
+    "repeats": 8,
+    "seed": 20260726
+  }
+}

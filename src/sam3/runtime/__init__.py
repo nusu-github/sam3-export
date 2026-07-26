@@ -12,6 +12,13 @@ from .image_pcs import (
     SessionStateError,
     create_image_session,
 )
+from .interactive_image import (
+    InteractiveImageSession,
+    InteractivePrediction,
+    InteractivePredictOptions,
+    InteractivePrompt,
+    create_interactive_session,
+)
 from .manifest import (
     CapabilityError,
     LegacyManifestError,
@@ -26,9 +33,14 @@ __all__ = [
     "associate_det_trk",
     "connected_components",
     "create_image_session",
+    "create_interactive_session",
     "CapabilityError",
     "ImageHandle",
     "ImagePCSSession",
+    "InteractiveImageSession",
+    "InteractivePrediction",
+    "InteractivePredictOptions",
+    "InteractivePrompt",
     "LegacyManifestError",
     "ManifestError",
     "mask_iou",

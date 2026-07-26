@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://sam3-export.local/schemas/sam3-deployment-manifest-v2.schema.json",
   "title": "SAM3 deployment plan manifest v2",
-  "description": "M2 release contract for one SAM3 image PCS deployment plan and backend bundle.",
+  "description": "Current release contract for one SAM3 deployment plan and backend bundle.",
   "type": "object",
   "additionalProperties": false,
   "required": [

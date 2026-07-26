@@ -16,9 +16,13 @@ from torch.nn import functional as F
 from sam3.grounding.tokenizer_ve import SimpleTokenizer
 from sam3.runtime.manifest import (
     DEFAULT_PLAN_ID,
+    IMAGE_PCS_PLAN_IDS,
     SELECTED_K32_PLAN_ID,
     SPLIT_PLAN_ID,
+    SUPPORTED_PLAN_IDS,
     CapabilityError,
+    ManifestError,
+    PlanNotFoundError,
     ResolvedPlan,
     resolve_plan,
     sha256_file,
@@ -580,7 +584,15 @@ class ImagePCSSession:
 def create_image_session(plan_id: str, *, bundle_dir: str | Path) -> ImagePCSSession:
     """Validate and create one manifest-driven M2 image PCS session."""
 
+    if plan_id not in IMAGE_PCS_PLAN_IDS:
+        if plan_id in SUPPORTED_PLAN_IDS:
+            raise ManifestError(
+                f"plan scope mismatch: {plan_id} is not an image PCS plan"
+            )
+        raise PlanNotFoundError(f"unknown image PCS plan: {plan_id}")
     resolved = resolve_plan(bundle_dir, plan_id)
+    if resolved.manifest["scope"]["use_case"] != "image-pcs":
+        raise ManifestError(f"plan scope mismatch: {plan_id} is not image-pcs")
     adapter = _adapter_factory(resolved)
     LOGGER.info(
         "created image PCS session plan_id=%s manifest_sha256=%s "

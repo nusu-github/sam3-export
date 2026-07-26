@@ -1,4 +1,4 @@
-"""Deployment manifest loading and M2 package validation."""
+"""Deployment manifest loading and current release package validation."""
 
 from __future__ import annotations
 
@@ -15,7 +15,10 @@ MANIFEST_FORMAT_V2 = "sam3-deployment-manifest-v2"
 DEFAULT_PLAN_ID = "sam3_base_image_pcs_text_ortcuda_v1"
 SELECTED_K32_PLAN_ID = "sam3_base_image_pcs_text_ortcuda_selected_k32_v1"
 SPLIT_PLAN_ID = "sam3_base_image_pcs_text_ortcuda_split_v1"
-SUPPORTED_PLAN_IDS = frozenset({DEFAULT_PLAN_ID, SELECTED_K32_PLAN_ID, SPLIT_PLAN_ID})
+INTERACTIVE_PLAN_ID = "sam3_base_interactive_image_pvs_ortcuda_v1"
+IMAGE_PCS_PLAN_IDS = frozenset({DEFAULT_PLAN_ID, SELECTED_K32_PLAN_ID, SPLIT_PLAN_ID})
+INTERACTIVE_PLAN_IDS = frozenset({INTERACTIVE_PLAN_ID})
+SUPPORTED_PLAN_IDS = IMAGE_PCS_PLAN_IDS | INTERACTIVE_PLAN_IDS
 
 
 class ManifestError(RuntimeError):
@@ -36,7 +39,7 @@ class CapabilityError(RuntimeError):
 
 @dataclass(frozen=True)
 class ResolvedPlan:
-    """Validated runtime view of one M2 image PCS plan."""
+    """Validated runtime view of one shipped deployment plan."""
 
     bundle_dir: Path
     manifest_path: Path
@@ -209,20 +212,20 @@ def _validate_files(manifest: dict[str, Any], bundle_dir: Path) -> None:
 
 def _validate_capabilities(manifest: dict[str, Any]) -> None:
     if manifest["backend"]["kind"] != "onnx-runtime":
-        raise CapabilityError("M2 image PCS supports only ONNX Runtime plans")
+        raise CapabilityError("shipped plans support only ONNX Runtime")
     required = {"device-resident-handoff", "iobinding", "external-data"}
     available = set(manifest["backend"]["capabilities"])
     missing = sorted(required - available)
     if missing:
         raise CapabilityError(f"manifest lacks required capabilities: {missing}")
     if manifest["backend"]["execution_provider"] != "CUDAExecutionProvider":
-        raise CapabilityError("M2 image PCS requires CUDAExecutionProvider")
+        raise CapabilityError("shipped plans require CUDAExecutionProvider")
 
 
 def validate_manifest_package(
     manifest_path: str | Path, *, expected_plan_id: str | None = None
 ) -> ResolvedPlan:
-    """Validate one v2 manifest and the M2 package facts used by the runtime."""
+    """Validate one v2 manifest and the package facts used by the runtime."""
 
     path = Path(manifest_path).resolve()
     manifest = _load_json(path)
@@ -250,7 +253,7 @@ def validate_manifest_package(
             f"manifest plan ID mismatch: {plan_id!r} != {expected_plan_id!r}"
         )
     if plan_id not in SUPPORTED_PLAN_IDS:
-        raise PlanNotFoundError(f"unsupported image PCS plan: {plan_id}")
+        raise PlanNotFoundError(f"unsupported deployment plan: {plan_id}")
 
     bundle_dir = path.parent.parent
     _validate_references(manifest, bundle_dir)
@@ -268,7 +271,7 @@ def resolve_plan(bundle_dir: str | Path, plan_id: str) -> ResolvedPlan:
     """Resolve a public plan by ID without guessing aliases or legacy metadata."""
 
     if plan_id not in SUPPORTED_PLAN_IDS:
-        raise PlanNotFoundError(f"unknown image PCS plan: {plan_id}")
+        raise PlanNotFoundError(f"unknown deployment plan: {plan_id}")
     bundle = Path(bundle_dir).resolve()
     path = bundle / "manifests" / f"{plan_id}.json"
     if not path.is_file():
@@ -279,6 +282,9 @@ def resolve_plan(bundle_dir: str | Path, plan_id: str) -> ResolvedPlan:
 __all__ = [
     "CapabilityError",
     "DEFAULT_PLAN_ID",
+    "IMAGE_PCS_PLAN_IDS",
+    "INTERACTIVE_PLAN_ID",
+    "INTERACTIVE_PLAN_IDS",
     "LegacyManifestError",
     "MANIFEST_FORMAT_V1",
     "MANIFEST_FORMAT_V2",

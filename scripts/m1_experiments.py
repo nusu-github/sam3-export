@@ -12,7 +12,6 @@ from functools import partial
 import gc
 import hashlib
 import json
-import os
 from pathlib import Path
 import statistics
 import subprocess
@@ -54,6 +53,7 @@ TEXT_LENGTH = 32
 OPSET_VERSION = 18
 K_PROFILES = (16, 32, 64)
 OUTPUT_NAMES = ("logits", "boxes_cxcywh", "mask_logits", "presence_logits")
+_GPU_MEMORY_BASELINE_MIB = 0.0
 
 
 class VisionTowerScalpedFlat(nn.Module):
@@ -803,6 +803,14 @@ def _cuda_ortvalue(value: np.ndarray | Tensor) -> ort.OrtValue:
     return ort.OrtValue.ortvalue_from_numpy(np.ascontiguousarray(value), "cuda", 0)
 
 
+def _clone_cuda_ortvalue(value: ort.OrtValue) -> ort.OrtValue:
+    """Detach an output from its session arena without leaving CUDA."""
+    if value.device_name() != "cuda":
+        raise RuntimeError("only CUDA OrtValue outputs can be detached")
+    owned = torch.from_dlpack(value).clone()
+    return ort.OrtValue.from_dlpack(owned)
+
+
 def _run_iobound(
     session: ort.InferenceSession, inputs: dict[str, ort.OrtValue]
 ) -> list[ort.OrtValue]:
@@ -822,19 +830,15 @@ def _gpu_memory_mib() -> float:
     result = subprocess.run(
         [
             "nvidia-smi",
-            "--query-compute-apps=pid,used_gpu_memory",
+            "--query-gpu=memory.used",
             "--format=csv,noheader,nounits",
         ],
         check=True,
         capture_output=True,
         text=True,
     )
-    pid = str(os.getpid())
-    for line in result.stdout.splitlines():
-        fields = [field.strip() for field in line.split(",")]
-        if len(fields) == 2 and fields[0] == pid:
-            return float(fields[1])
-    return 0.0
+    used = float(result.stdout.splitlines()[0].strip())
+    return max(0.0, used - _GPU_MEMORY_BASELINE_MIB)
 
 
 def _benchmark(
@@ -919,6 +923,40 @@ def _array_parity(
     return {"max_abs": max_abs}
 
 
+def _pcs_output_parity(
+    expected: list[np.ndarray], actual: list[np.ndarray]
+) -> dict[str, float | bool]:
+    expected_logits, expected_boxes, expected_masks, expected_presence = expected
+    actual_logits, actual_boxes, actual_masks, actual_presence = actual
+    expected_scores = (
+        _sigmoid(expected_logits[..., 0])
+        * _sigmoid(expected_presence).reshape(expected_logits.shape[0], 1)
+    )[0]
+    actual_scores = (
+        _sigmoid(actual_logits[..., 0])
+        * _sigmoid(actual_presence).reshape(actual_logits.shape[0], 1)
+    )[0]
+    order = np.lexsort((np.arange(expected_scores.size), -expected_scores))[:16]
+    return {
+        "score_max_abs": float(np.max(np.abs(expected_scores - actual_scores))),
+        "admitted_indices_exact_at_0_5": bool(
+            np.array_equal(
+                np.flatnonzero(expected_scores > 0.5),
+                np.flatnonzero(actual_scores > 0.5),
+            )
+        ),
+        "box_max_abs_top16": float(
+            np.max(
+                np.abs(
+                    expected_boxes[0, order].astype(np.float32)
+                    - actual_boxes[0, order].astype(np.float32)
+                )
+            )
+        ),
+        "mask_iou_top16": _mask_iou(expected_masks[0, order], actual_masks[0, order]),
+    }
+
+
 def _ort_local_parity(
     fixtures: dict[str, Any],
     local_reference: Path,
@@ -980,26 +1018,50 @@ def _boundary_bytes(outputs: list[ort.OrtValue]) -> int:
 def _profile_mask_graph(
     path: Path, inputs: dict[str, ort.OrtValue]
 ) -> dict[str, float]:
+    model = onnx.load(path, load_external_data=False)
+    names = [node.name.lower() for node in model.graph.node]
+    gather_end = next(
+        index
+        for index, node in enumerate(model.graph.node)
+        if node.op_type == "GatherElements"
+    )
+    pixel_end = max(
+        index for index, node in enumerate(model.graph.node) if node.op_type == "Conv"
+    )
+    projection_end = max(
+        index for index, node in enumerate(model.graph.node) if node.op_type == "Einsum"
+    )
+    groups = {
+        "device_gather_ms": set(names[: gather_end + 1]),
+        "pixel_decoder_ms": set(names[gather_end + 1 : pixel_end + 1]),
+        "mask_query_projection_and_einsum_ms": set(
+            names[pixel_end + 1 : projection_end + 1]
+        ),
+    }
     session = _session(path, profiling=True)
     outputs = _run_iobound(session, inputs)
     _ = outputs[0].numpy()
     profile_path = Path(session.end_profiling())
     events = json.loads(profile_path.read_text(encoding="utf-8"))
-    totals = {"pixel_decoder_ms": 0.0, "mask_query_projection_and_einsum_ms": 0.0}
+    totals = {group: 0.0 for group in groups}
     for event in events:
         if event.get("cat") != "Node":
             continue
         name = str(event.get("name", "")).lower()
         duration_ms = float(event.get("dur", 0.0)) / 1000.0
-        if "pixel_decoder" in name:
-            totals["pixel_decoder_ms"] += duration_ms
-        elif any(token in name for token in ("mask_predictor", "mask_embed", "einsum")):
-            totals["mask_query_projection_and_einsum_ms"] += duration_ms
+        for group, node_names in groups.items():
+            if any(name.startswith(node_name) for node_name in node_names):
+                totals[group] += duration_ms
+                break
     profile_path.unlink(missing_ok=True)
     return totals
 
 
 def _measure_phase(args: argparse.Namespace) -> None:
+    global _GPU_MEMORY_BASELINE_MIB
+
+    _GPU_MEMORY_BASELINE_MIB = 0.0
+    _GPU_MEMORY_BASELINE_MIB = _gpu_memory_mib()
     work_dir = args.work_dir.resolve()
     artifact_dir = work_dir / "artifacts"
     legacy_dir = Path(__file__).resolve().parents[1] / "artifacts" / "sam3-onnx"
@@ -1038,7 +1100,7 @@ def _measure_phase(args: argparse.Namespace) -> None:
     representative_image = fixtures["cases"][0]["image"]
     for profile, path in vision_paths.items():
         session = _session(path)
-        vision_metrics[profile], _ = _benchmark(
+        vision_metrics[profile], timed_outputs = _benchmark(
             partial(
                 _run_iobound, session, {"pixel_values": pixels[representative_image]}
             ),
@@ -1046,10 +1108,15 @@ def _measure_phase(args: argparse.Namespace) -> None:
             repeats,
         )
         vision_outputs[profile] = {
-            image["id"]: _run_iobound(session, {"pixel_values": pixels[image["id"]]})
+            image["id"]: [
+                _clone_cuda_ortvalue(output)
+                for output in _run_iobound(
+                    session, {"pixel_values": pixels[image["id"]]}
+                )
+            ]
             for image in fixtures["images"]
         }
-        del session
+        del timed_outputs, session
         gc.collect()
 
     image_mask = _cuda_ortvalue(np.zeros((1, 72, 72), dtype=np.bool_))
@@ -1147,7 +1214,9 @@ def _measure_phase(args: argparse.Namespace) -> None:
     gc.collect()
 
     e1_case_parity = {
-        case["id"]: _array_parity(split_outputs[case["id"]], full_outputs[case["id"]])
+        case["id"]: _pcs_output_parity(
+            split_outputs[case["id"]], full_outputs[case["id"]]
+        )
         for case in fixtures["cases"]
     }
     e1 = {
@@ -1235,7 +1304,7 @@ def _measure_phase(args: argparse.Namespace) -> None:
         representative_outputs = vision_outputs[profile][representative_image]
         boundary_bytes = _boundary_bytes(representative_outputs)
         output_parity = {
-            case["id"]: _array_parity(
+            case["id"]: _pcs_output_parity(
                 full_outputs[case["id"]], e2_outputs[profile][case["id"]]
             )
             for case in fixtures["cases"]
@@ -1417,6 +1486,11 @@ def _measure_phase(args: argparse.Namespace) -> None:
         "fixture_version": fixtures["fixture_version"],
         "measurement": fixtures["measurement"],
         "environment": _environment(),
+        "vram_measurement": {
+            "basis": "nvidia-smi device memory.used minus pre-measurement baseline",
+            "baseline_mib": _GPU_MEMORY_BASELINE_MIB,
+            "sample_interval_ms": 50,
+        },
         "commit": _git_revision(Path(__file__).resolve().parents[1]),
         "checkpoint_sha256": fixtures["checkpoint_sha256"],
         "E1": e1,

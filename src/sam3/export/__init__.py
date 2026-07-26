@@ -46,6 +46,16 @@ from .interactive_image import (
 )
 from .interactive_image_embed import InteractiveImageEmbed
 from .memory_encode import MemoryEncode
+from .multiplex import Demux, Mux, ScatterReplace
+from .multiplex_video import (
+    MultiplexFrameEncode,
+    MultiplexInteractionPreview,
+    MultiplexInteractionPreviewMultimask3,
+    MultiplexInteractionPreviewSingle1,
+    MultiplexMemoryCommit,
+    MultiplexPropagation,
+    MultiplexScatterReplaceCommit,
+)
 from .text_tower import TextTower, TextTowerSpec
 from .tracker_step import TrackerStep
 from .vision_tower import VisionTower, VisionTowerFlat, VisionTowerProfiled
@@ -92,5 +102,15 @@ __all__ = [
     "GroundingQueryCore",
     "TextOnlyPromptEncode",
     "MemoryEncode",
+    "Mux",
+    "Demux",
+    "ScatterReplace",
+    "MultiplexFrameEncode",
+    "MultiplexInteractionPreview",
+    "MultiplexInteractionPreviewMultimask3",
+    "MultiplexInteractionPreviewSingle1",
+    "MultiplexMemoryCommit",
+    "MultiplexPropagation",
+    "MultiplexScatterReplaceCommit",
     "TrackerStep",
 ]

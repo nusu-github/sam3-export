@@ -12,8 +12,17 @@ from typing import Final
 import torch
 from torch import Tensor, nn
 
+from sam3.export.multiplex_video import (
+    MultiplexFrameEncode,
+    MultiplexInteractionPreviewMultimask3,
+    MultiplexInteractionPreviewSingle1,
+    MultiplexMemoryCommit,
+    MultiplexPropagation,
+    MultiplexScatterReplaceCommit,
+)
 from sam3.primitives.mlp import MLP
 from sam3.primitives.position_encoding import PositionEmbeddingSine
+from sam3.runtime.multiplex_state import MultiplexVariantParameters
 from sam3.tracking.memory import create_maskmem_backbone
 from sam3.tracking.multiplex_transformer import create_multiplex_transformer
 from sam3.vision.multiplex_mask_decoder import create_multiplex_mask_decoder
@@ -97,6 +106,24 @@ class MultiplexTrackerCore(nn.Module):
         self.interactive_obj_ptr_proj = MLP(256, 256, 256, 3)
         self.obj_ptr_tpos_proj = nn.Linear(256, 256)
         self.no_obj_ptr_linear = nn.Linear(256, 256)
+
+
+@dataclass(frozen=True)
+class MultiplexVideoModules:
+    """Canonical M5 modules; deployment recipes may compose them differently."""
+
+    frame_encode: MultiplexFrameEncode
+    preview_multimask3: MultiplexInteractionPreviewMultimask3
+    preview_single1: MultiplexInteractionPreviewSingle1
+    propagation_bucket1: MultiplexPropagation
+    propagation_bucket2: MultiplexPropagation
+    propagation_dynamic: MultiplexPropagation
+    memory_commit_bucket1: MultiplexMemoryCommit
+    memory_commit_bucket2: MultiplexMemoryCommit
+    memory_commit_dynamic: MultiplexMemoryCommit
+    scatter_commit_bucket1: MultiplexScatterReplaceCommit
+    scatter_commit_bucket2: MultiplexScatterReplaceCommit
+    scatter_commit_dynamic: MultiplexScatterReplaceCommit
 
 
 def _sha256(path: Path) -> str:
@@ -255,6 +282,90 @@ def build_sam31_multiplex_tracker_core(
     return module
 
 
+def build_sam31_multiplex_video_modules(
+    checkpoint_path: str | Path | None = None,
+    *,
+    device: str | torch.device = "cuda",
+    dtype: torch.dtype = torch.float16,
+    use_cuda_autocast: bool = True,
+) -> MultiplexVideoModules:
+    """Build the M5 canonical set from the fixed checkpoint identity."""
+
+    checkpoint = load_sam31_multiplex_checkpoint(checkpoint_path)
+    tri_neck = build_sam31_tri_neck(checkpoint).eval().to(device=device, dtype=dtype)
+    tracker = (
+        build_sam31_multiplex_tracker_core(checkpoint)
+        .eval()
+        .to(device=device, dtype=dtype)
+    )
+    variant = MultiplexVariantParameters.native()
+    return MultiplexVideoModules(
+        frame_encode=MultiplexFrameEncode(
+            tri_neck, tracker, use_cuda_autocast=use_cuda_autocast
+        ).eval(),
+        preview_multimask3=MultiplexInteractionPreviewMultimask3(
+            tracker, variant, use_cuda_autocast=use_cuda_autocast
+        ).eval(),
+        preview_single1=MultiplexInteractionPreviewSingle1(
+            tracker, variant, use_cuda_autocast=use_cuda_autocast
+        ).eval(),
+        propagation_bucket1=MultiplexPropagation(
+            tracker,
+            variant,
+            bucket_count=1,
+            use_cuda_autocast=use_cuda_autocast,
+        ).eval(),
+        propagation_bucket2=MultiplexPropagation(
+            tracker,
+            variant,
+            bucket_count=2,
+            use_cuda_autocast=use_cuda_autocast,
+        ).eval(),
+        propagation_dynamic=MultiplexPropagation(
+            tracker,
+            variant,
+            bucket_count=None,
+            use_cuda_autocast=use_cuda_autocast,
+        ).eval(),
+        memory_commit_bucket1=MultiplexMemoryCommit(
+            tracker,
+            variant,
+            bucket_count=1,
+            use_cuda_autocast=use_cuda_autocast,
+        ).eval(),
+        memory_commit_bucket2=MultiplexMemoryCommit(
+            tracker,
+            variant,
+            bucket_count=2,
+            use_cuda_autocast=use_cuda_autocast,
+        ).eval(),
+        memory_commit_dynamic=MultiplexMemoryCommit(
+            tracker,
+            variant,
+            bucket_count=None,
+            use_cuda_autocast=use_cuda_autocast,
+        ).eval(),
+        scatter_commit_bucket1=MultiplexScatterReplaceCommit(
+            tracker,
+            variant,
+            bucket_count=1,
+            use_cuda_autocast=use_cuda_autocast,
+        ).eval(),
+        scatter_commit_bucket2=MultiplexScatterReplaceCommit(
+            tracker,
+            variant,
+            bucket_count=2,
+            use_cuda_autocast=use_cuda_autocast,
+        ).eval(),
+        scatter_commit_dynamic=MultiplexScatterReplaceCommit(
+            tracker,
+            variant,
+            bucket_count=None,
+            use_cuda_autocast=use_cuda_autocast,
+        ).eval(),
+    )
+
+
 def verify_multiplex_checkpoint_shapes(checkpoint: Mapping[str, Tensor]) -> None:
     """Verify checkpoint-owned capacity/layout values without inventing defaults."""
 
@@ -295,7 +406,9 @@ __all__ = [
     "TRACKER_PREFIX",
     "TRI_NECK_PREFIX",
     "MultiplexTrackerCore",
+    "MultiplexVideoModules",
     "build_sam31_multiplex_tracker_core",
+    "build_sam31_multiplex_video_modules",
     "build_sam31_tri_neck",
     "load_sam31_multiplex_checkpoint",
     "map_checkpoint_to_module",

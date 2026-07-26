@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://sam3-export.local/schemas/sam3-deployment-manifest-v2.schema.json",
   "title": "SAM3 deployment plan manifest v2",
-  "description": "Draft machine-readable contract for one semantic deployment plan and backend bundle.",
+  "description": "M2 release contract for one SAM3 image PCS deployment plan and backend bundle.",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -103,19 +103,10 @@
         "exclusions"
       ],
       "properties": {
-        "classification": {
-          "enum": [
-            "public-deployment",
-            "internal-component",
-            "internal-fixture",
-            "legacy-shipped"
-          ]
-        },
-        "lifecycle": {
-          "enum": ["shipped", "candidate", "planned", "test-only", "deprecated"]
-        },
+        "classification": { "const": "public-deployment" },
+        "lifecycle": { "const": "shipped" },
         "dispatch_role": {
-          "enum": ["default", "optional", "fallback", "legacy", "not-applicable"]
+          "enum": ["default", "optional", "fallback"]
         },
         "scope_label": { "type": "string", "minLength": 1 },
         "use_case": {
@@ -123,8 +114,7 @@
             "image-pcs",
             "interactive-image-pvs",
             "base-video-tracking",
-            "multiplex-video-tracking",
-            "schema-validation"
+            "multiplex-video-tracking"
           ]
         },
         "prompt_coverage": {
@@ -132,7 +122,7 @@
           "minItems": 1,
           "uniqueItems": true,
           "items": {
-            "enum": ["text", "geometry-exemplar", "point", "box", "mask", "none"]
+            "enum": ["text", "geometry-exemplar", "point", "box", "mask"]
           }
         },
         "capabilities": {
@@ -146,67 +136,7 @@
           "uniqueItems": true,
           "items": { "type": "string", "minLength": 1 }
         }
-      },
-      "allOf": [
-        {
-          "if": {
-            "properties": { "classification": { "const": "internal-fixture" } }
-          },
-          "then": {
-            "properties": {
-              "lifecycle": { "const": "test-only" },
-              "dispatch_role": { "const": "not-applicable" }
-            }
-          }
-        },
-        {
-          "if": {
-            "properties": { "classification": { "const": "internal-component" } }
-          },
-          "then": {
-            "properties": {
-              "lifecycle": { "enum": ["candidate", "planned", "test-only", "deprecated"] },
-              "dispatch_role": { "const": "not-applicable" }
-            }
-          }
-        },
-        {
-          "if": {
-            "properties": { "classification": { "const": "legacy-shipped" } }
-          },
-          "then": {
-            "properties": {
-              "lifecycle": { "const": "shipped" },
-              "dispatch_role": { "const": "legacy" }
-            }
-          }
-        },
-        {
-          "if": {
-            "properties": { "classification": { "const": "public-deployment" } }
-          },
-          "then": {
-            "properties": {
-              "lifecycle": { "enum": ["shipped", "candidate", "planned", "deprecated"] },
-              "dispatch_role": { "enum": ["default", "optional", "fallback", "not-applicable"] }
-            }
-          }
-        },
-        {
-          "if": {
-            "properties": {
-              "classification": { "const": "public-deployment" },
-              "lifecycle": { "const": "shipped" }
-            },
-            "required": ["classification", "lifecycle"]
-          },
-          "then": {
-            "properties": {
-              "dispatch_role": { "enum": ["default", "optional", "fallback"] }
-            }
-          }
-        }
-      ]
+      }
     },
     "plan": {
       "type": "object",
@@ -251,7 +181,7 @@
         "variant_parameters"
       ],
       "properties": {
-        "family": { "enum": ["sam3", "sam3.1", "synthetic"] },
+        "family": { "enum": ["sam3", "sam3.1"] },
         "variant": { "type": "string", "minLength": 1 },
         "vision_layout": { "type": "string", "minLength": 1 },
         "tracking_layout": { "type": "string", "minLength": 1 },
@@ -295,7 +225,7 @@
         "capabilities"
       ],
       "properties": {
-        "kind": { "enum": ["onnx-runtime", "aotinductor", "synthetic"] },
+        "kind": { "enum": ["onnx-runtime", "aotinductor"] },
         "target": { "type": "string", "minLength": 1 },
         "execution_provider": { "type": "string", "minLength": 1 },
         "runtime_version": { "type": "string", "minLength": 1 },
@@ -330,7 +260,7 @@
       "required": ["id", "precision", "shape_mode", "static_values", "dynamic_dimensions"],
       "properties": {
         "id": { "$ref": "#/$defs/id" },
-        "precision": { "enum": ["fp32", "fp16", "bf16", "mixed", "synthetic"] },
+        "precision": { "enum": ["fp32", "fp16", "bf16", "mixed"] },
         "shape_mode": { "enum": ["static", "bounded-dynamic"] },
         "static_values": {
           "type": "array",
@@ -440,7 +370,7 @@
       "properties": {
         "id": { "$ref": "#/$defs/id" },
         "role": { "type": "string", "minLength": 1 },
-        "format": { "enum": ["onnx", "exported-program", "aotinductor", "synthetic"] },
+        "format": { "enum": ["onnx", "exported-program", "aotinductor"] },
         "components": {
           "type": "array",
           "minItems": 1,
@@ -575,8 +505,8 @@
         "strict_audit"
       ],
       "properties": {
-        "canonical_format": { "enum": ["exported-program", "synthetic"] },
-        "mode": { "enum": ["strict", "non-strict", "synthetic"] },
+        "canonical_format": { "const": "exported-program" },
+        "mode": { "enum": ["strict", "non-strict"] },
         "pytorch_version": { "type": "string", "minLength": 1 },
         "exporter_version": { "type": "string", "minLength": 1 },
         "constraints": {
@@ -600,20 +530,7 @@
             }
           ]
         }
-      },
-      "allOf": [
-        {
-          "if": {
-            "properties": { "canonical_format": { "const": "exported-program" } }
-          },
-          "then": {
-            "properties": { "mode": { "enum": ["strict", "non-strict"] } }
-          },
-          "else": {
-            "properties": { "mode": { "const": "synthetic" } }
-          }
-        }
-      ]
+      }
     },
     "policy": {
       "type": "object",
@@ -688,40 +605,7 @@
               }
             ]
           },
-          "allOf": [
-            {
-              "contains": {
-                "properties": { "stage": { "const": "official-to-local-eager" } },
-                "required": ["stage"]
-              },
-              "minContains": 1,
-              "maxContains": 1
-            },
-            {
-              "contains": {
-                "properties": { "stage": { "const": "local-eager-to-exported-program" } },
-                "required": ["stage"]
-              },
-              "minContains": 1,
-              "maxContains": 1
-            },
-            {
-              "contains": {
-                "properties": { "stage": { "const": "exported-program-to-backend" } },
-                "required": ["stage"]
-              },
-              "minContains": 1,
-              "maxContains": 1
-            },
-            {
-              "contains": {
-                "properties": { "stage": { "const": "end-to-end-behavior" } },
-                "required": ["stage"]
-              },
-              "minContains": 1,
-              "maxContains": 1
-            }
-          ]
+          "uniqueItems": true
         }
       }
     },
@@ -731,10 +615,7 @@
       "required": ["id", "path", "role", "size_bytes", "digest"],
       "properties": {
         "id": { "$ref": "#/$defs/id" },
-        "path": {
-          "type": "string",
-          "pattern": "^(?!/)(?!.*(?:^|/)(?:\\.|\\.\\.)(?:/|$))(?!.*//)[A-Za-z0-9](?:[A-Za-z0-9._/-]*[A-Za-z0-9._-])?$"
-        },
+        "path": { "type": "string", "minLength": 1 },
         "role": {
           "enum": [
             "graph",
@@ -742,6 +623,8 @@
             "capture",
             "graph-signature",
             "tokenizer",
+            "license",
+            "documentation",
             "fixture",
             "parity-report",
             "export-report"

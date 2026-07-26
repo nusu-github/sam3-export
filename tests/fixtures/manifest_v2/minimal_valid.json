@@ -1,66 +1,64 @@
 {
   "format": "sam3-deployment-manifest-v2",
-  "manifest_id": "sam3-manifest-schema-fixture-v2",
+  "manifest_id": "sam3-base-image-pcs-text-ortcuda-v1-manifest-v2",
   "scope": {
-    "classification": "internal-fixture",
-    "lifecycle": "test-only",
-    "dispatch_role": "not-applicable",
-    "scope_label": "Synthetic manifest v2 schema validation fixture",
-    "use_case": "schema-validation",
-    "prompt_coverage": ["none"],
-    "capabilities": ["synthetic two-stage tensor flow"],
-    "exclusions": ["model correctness", "performance", "release eligibility"]
+    "classification": "public-deployment",
+    "lifecycle": "shipped",
+    "dispatch_role": "default",
+    "scope_label": "SAM3 base text-only image PCS / ORT CUDA v1",
+    "use_case": "image-pcs",
+    "prompt_coverage": ["text"],
+    "capabilities": ["image PCS", "raw-200"],
+    "exclusions": ["interactive image PVS", "video", "SAM3.1"]
   },
   "plan": {
-    "id": "synthetic-schema-validation-v1",
+    "id": "sam3-base-image-pcs-text-ortcuda-v1",
     "contract_version": "1.0.0",
-    "semantic_graph_kind": "synthetic-two-stage",
-    "role_set": ["schema-validation"],
-    "components": ["SyntheticEncode", "SyntheticDecode"]
+    "semantic_graph_kind": "sam3-base-text-only-image-pcs",
+    "role_set": ["detector-image-encode", "grounding-full"],
+    "components": ["DetectorImageEncode", "GroundingFull"]
   },
   "model": {
-    "family": "synthetic",
-    "variant": "schema-fixture",
-    "vision_layout": "synthetic",
+    "family": "sam3",
+    "variant": "base",
+    "vision_layout": "three detector FPN levels; required final position",
     "tracking_layout": "none",
-    "source_repository": "local-schema-fixture",
+    "source_repository": "facebook/sam3",
     "source_commit": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-    "model_revision": "fixture-v1",
+    "model_revision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
     "checkpoint": {
-      "id": "synthetic-checkpoint",
+      "id": "facebook-sam3-sam3-pt",
       "digest": {
         "algorithm": "sha256",
         "value": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
       }
     },
-    "variant_parameters": [
-      { "name": "synthetic-width", "value": 4 }
-    ]
+    "variant_parameters": []
   },
   "backend": {
-    "kind": "synthetic",
-    "target": "test-device",
-    "execution_provider": "SyntheticExecutionProvider",
-    "runtime_version": "1.0",
+    "kind": "onnx-runtime",
+    "target": "CUDA device 0",
+    "execution_provider": "CUDAExecutionProvider",
+    "runtime_version": "1.27.0",
     "pytorch_version": "2.0",
     "exporter_version": "1.0",
-    "opset": null,
-    "capabilities": ["device-resident-handoff", "external-data"]
+    "opset": 18,
+    "capabilities": ["device-resident-handoff", "iobinding", "external-data"]
   },
   "profile": {
-    "id": "synthetic-b1-fp16",
-    "precision": "synthetic",
+    "id": "b1-1008-l32-q200-fp16",
+    "precision": "fp16",
     "shape_mode": "static",
     "static_values": [
       { "name": "batch", "value": 1 },
-      { "name": "width", "value": 4 }
+      { "name": "image-size", "value": 1008 }
     ],
     "dynamic_dimensions": []
   },
   "tensors": [
     {
       "id": "input-values",
-      "semantic_type": "SyntheticInputV1",
+      "semantic_type": "PixelValuesV1",
       "dtype": "float16",
       "shape": [1, 4],
       "layout": "BD",
@@ -74,7 +72,7 @@
     },
     {
       "id": "encoded-values",
-      "semantic_type": "SyntheticEncodedV1",
+      "semantic_type": "ImageFeatureV1",
       "dtype": "float16",
       "shape": [1, 4],
       "layout": "BD",
@@ -88,7 +86,7 @@
     },
     {
       "id": "output-values",
-      "semantic_type": "SyntheticOutputV1",
+      "semantic_type": "ScoreLogitV1",
       "dtype": "float16",
       "shape": [1, 1],
       "layout": "BD",
@@ -103,10 +101,10 @@
   ],
   "artifacts": [
     {
-      "id": "synthetic-encoder",
-      "role": "feature-encoder",
-      "format": "synthetic",
-      "components": ["SyntheticEncode"],
+      "id": "detector-image-encode",
+      "role": "detector-image-encode",
+      "format": "onnx",
+      "components": ["DetectorImageEncode"],
       "entry_file_ref": "encoder-graph",
       "external_data_file_refs": ["encoder-external-data"],
       "inputs": [
@@ -117,10 +115,10 @@
       ]
     },
     {
-      "id": "synthetic-decoder",
-      "role": "result-decoder",
-      "format": "synthetic",
-      "components": ["SyntheticDecode"],
+      "id": "grounding-full",
+      "role": "grounding-full",
+      "format": "onnx",
+      "components": ["GroundingFull"],
       "entry_file_ref": "decoder-graph",
       "external_data_file_refs": [],
       "inputs": [
@@ -132,40 +130,40 @@
     }
   ],
   "execution": {
-    "entry_artifacts": ["synthetic-encoder"],
+    "entry_artifacts": ["detector-image-encode"],
     "edges": [
       {
-        "producer_artifact_ref": "synthetic-encoder",
-        "consumer_artifact_ref": "synthetic-decoder",
+        "producer_artifact_ref": "detector-image-encode",
+        "consumer_artifact_ref": "grounding-full",
         "tensor_refs": ["encoded-values"]
       }
     ]
   },
   "caches": [
     {
-      "id": "synthetic-feature-cache",
+      "id": "image-cache",
       "tensor_refs": ["encoded-values"],
       "lifetime": "image-session",
       "key_version": "1.0.0",
       "key_parts": ["input-digest", "model-revision", "profile-id"],
       "invalidated_by": ["input-change", "model-change", "profile-change"],
-      "state_compatibility": "SyntheticEncodedV1 and matching profile"
+      "state_compatibility": "matching checkpoint and static profile"
     }
   ],
   "handoffs": [
     {
       "id": "encoder-to-decoder",
-      "producer_artifact_ref": "synthetic-encoder",
-      "consumer_artifact_ref": "synthetic-decoder",
+      "producer_artifact_ref": "detector-image-encode",
+      "consumer_artifact_ref": "grounding-full",
       "tensor_refs": ["encoded-values"],
       "requirement": "required-device",
-      "mechanism": "synthetic-device-value",
-      "fallback_plan_id": "synthetic-fused-fallback-v1"
+      "mechanism": "ORT CUDA IOBinding / CUDA OrtValue",
+      "fallback_plan_id": null
     }
   ],
   "capture": {
-    "canonical_format": "synthetic",
-    "mode": "synthetic",
+    "canonical_format": "exported-program",
+    "mode": "non-strict",
     "pytorch_version": "2.0",
     "exporter_version": "1.0",
     "constraints": [],
@@ -179,8 +177,8 @@
     {
       "name": "output-policy",
       "binding": "baked",
-      "value": "synthetic-score-logit",
-      "stage": "synthetic-decoder"
+      "value": "raw-200",
+      "stage": "grounding-full"
     },
     {
       "name": "selection-policy",
@@ -191,7 +189,7 @@
   ],
   "fixtures": [
     {
-      "id": "synthetic-manifest-fixture",
+      "id": "m1-image-pcs-v1",
       "version": "1.0.0",
       "owner": {
         "team": "sam3-export",
@@ -218,7 +216,7 @@
   "files": [
     {
       "id": "encoder-graph",
-      "path": "graphs/encoder.synthetic",
+      "path": "graphs/detector_image_encode.onnx",
       "role": "graph",
       "size_bytes": 16,
       "digest": {
@@ -228,7 +226,7 @@
     },
     {
       "id": "encoder-external-data",
-      "path": "graphs/encoder.synthetic.data",
+      "path": "graphs/detector_image_encode.onnx.data",
       "role": "external-data",
       "size_bytes": 32,
       "digest": {
@@ -238,7 +236,7 @@
     },
     {
       "id": "decoder-graph",
-      "path": "graphs/decoder.synthetic",
+      "path": "graphs/grounding_full.onnx",
       "role": "graph",
       "size_bytes": 16,
       "digest": {

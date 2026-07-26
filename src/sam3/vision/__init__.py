@@ -1,7 +1,11 @@
 """Image encoders and prompted-mask components."""
 
 from .mask_decoder import MaskDecoder
-from .necks import Sam3DualViTDetNeck
+from .multiplex_mask_decoder import (
+    MultiplexMaskDecoder,
+    create_multiplex_mask_decoder,
+)
+from .necks import Sam3DualViTDetNeck, Sam3TriViTDetNeck
 from .prompt_encoder import PositionEmbeddingRandom, PromptEncoder
 from .sam_image_head import SamImageHead
 from .sam_image_pipeline import SamImagePipeline
@@ -22,9 +26,12 @@ from .vitdet_ops import (
 
 __all__ = [
     "MaskDecoder",
+    "MultiplexMaskDecoder",
+    "create_multiplex_mask_decoder",
     "PositionEmbeddingRandom",
     "PromptEncoder",
     "Sam3DualViTDetNeck",
+    "Sam3TriViTDetNeck",
     "SamImageHead",
     "SamImagePipeline",
     "SamInteractivePredictor",

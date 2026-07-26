@@ -7,6 +7,7 @@ from .memory import (
     create_maskmem_backbone,
 )
 from .multi_object_propagate import propagate_objects_one_frame
+from .multiplex_transformer import create_multiplex_transformer
 from .sam3_text_video import Sam3TextOnVideo
 from .sam3_tracker import (
     Sam3Tracker,
@@ -28,6 +29,7 @@ __all__ = [
     "SimpleMaskDownSampler",
     "SimpleMaskEncoder",
     "create_maskmem_backbone",
+    "create_multiplex_transformer",
     "Sam3Tracker",
     "Sam3TrackerBase",
     "build_sam3_tracker",

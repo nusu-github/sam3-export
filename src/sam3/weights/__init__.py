@@ -32,6 +32,22 @@ from .load_sam3 import (
     load_vit_trunk_weights,
     resolve_sam3_checkpoint,
 )
+from .multiplex import (
+    ParameterMappingReport,
+    MultiplexTrackerCore,
+    SAM31_CHECKPOINT_NAME,
+    SAM31_CHECKPOINT_SHA256,
+    SAM31_REPOSITORY,
+    SAM31_REVISION,
+    TRACKER_PREFIX,
+    TRI_NECK_PREFIX,
+    build_sam31_multiplex_tracker_core,
+    build_sam31_tri_neck,
+    load_sam31_multiplex_checkpoint,
+    map_checkpoint_to_module,
+    resolve_sam31_multiplex_checkpoint,
+    verify_multiplex_checkpoint_shapes,
+)
 
 __all__ = [
     "BaseVideoModules",
@@ -62,4 +78,18 @@ __all__ = [
     "load_interactive_weights",
     "load_text_detector_weights",
     "load_tracker_weights",
+    "ParameterMappingReport",
+    "MultiplexTrackerCore",
+    "SAM31_CHECKPOINT_NAME",
+    "SAM31_CHECKPOINT_SHA256",
+    "SAM31_REPOSITORY",
+    "SAM31_REVISION",
+    "TRACKER_PREFIX",
+    "TRI_NECK_PREFIX",
+    "build_sam31_multiplex_tracker_core",
+    "build_sam31_tri_neck",
+    "load_sam31_multiplex_checkpoint",
+    "map_checkpoint_to_module",
+    "resolve_sam31_multiplex_checkpoint",
+    "verify_multiplex_checkpoint_shapes",
 ]

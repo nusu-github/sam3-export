@@ -20,6 +20,7 @@ from typing import Any
 from jaxtyping import Float
 from timm.layers import LayerNorm2d
 from timm.models.convnext import ConvNeXtBlock
+import torch
 from torch import Tensor
 import torch.nn as nn
 import torch.nn.functional as F
@@ -105,6 +106,40 @@ class SimpleMaskDownSampler(nn.Module):
         return self.encoder(x)
 
 
+class CXBlock(nn.Module):
+    """Official ConvNeXt block names used by the SAM3.1 checkpoint."""
+
+    def __init__(
+        self,
+        dim: int,
+        kernel_size: int = 7,
+        padding: int = 3,
+        layer_scale_init_value: float = 1.0e-6,
+    ) -> None:
+        super().__init__()
+        self.dwconv = nn.Conv2d(
+            dim,
+            dim,
+            kernel_size=kernel_size,
+            padding=padding,
+            groups=dim,
+        )
+        self.norm = LayerNorm2d(dim, eps=1.0e-6)
+        self.pwconv1 = nn.Linear(dim, 4 * dim)
+        self.act = nn.GELU()
+        self.pwconv2 = nn.Linear(4 * dim, dim)
+        self.gamma = nn.Parameter(layer_scale_init_value * torch.ones(dim))
+
+    def forward(self, values: Tensor) -> Tensor:
+        residual = values
+        values = self.dwconv(values)
+        values = self.norm(values)
+        values = values.permute(0, 2, 3, 1)
+        values = self.pwconv2(self.act(self.pwconv1(values)))
+        values = self.gamma * values
+        return residual + values.permute(0, 3, 1, 2)
+
+
 class SimpleFuser(nn.Module):
     def __init__(
         self,
@@ -182,6 +217,10 @@ def create_maskmem_backbone(
     pe_dim: int = 64,
     interpol_size: Sequence[int] | None = (1152, 1152),
     precompute_resolution: int | None = 1008,
+    multiplex_count: int = 1,
+    starting_out_chan: int = 1,
+    input_channel_multiplier: int = 1,
+    official_fuser_names: bool = False,
 ) -> SimpleMaskEncoder:
     """Factory matching ``model_builder._create_tracker_maskmem_backbone``.
 
@@ -204,16 +243,25 @@ def create_maskmem_backbone(
         padding=1,
         total_stride=16,
         interpol_size=list(interpol_size) if interpol_size is not None else None,
+        multiplex_count=multiplex_count,
+        starting_out_chan=starting_out_chan,
+        input_channel_multiplier=input_channel_multiplier,
     )
-    fuser = SimpleFuser(
-        layer=ConvNeXtBlock(
+    if official_fuser_names:
+        fuser_layer: nn.Module = CXBlock(
+            dim=in_dim,
+            kernel_size=7,
+            padding=3,
+            layer_scale_init_value=1.0e-6,
+        )
+    else:
+        fuser_layer = ConvNeXtBlock(
             in_chs=in_dim,
             out_chs=in_dim,
             kernel_size=7,
-            ls_init_value=1.0e-06,
-        ),
-        num_layers=fuser_layers,
-    )
+            ls_init_value=1.0e-6,
+        )
+    fuser = SimpleFuser(layer=fuser_layer, num_layers=fuser_layers)
     return SimpleMaskEncoder(
         out_dim=out_dim,
         position_encoding=position_encoding,
@@ -225,6 +273,7 @@ def create_maskmem_backbone(
 
 __all__ = [
     "SimpleMaskDownSampler",
+    "CXBlock",
     "SimpleFuser",
     "SimpleMaskEncoder",
     "create_maskmem_backbone",

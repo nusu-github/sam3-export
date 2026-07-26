@@ -4,6 +4,31 @@ from __future__ import annotations
 
 from typing import Any
 
+from tensordict import TensorDictBase
+from torch import Tensor
+
+from .td_features import unpack_frame_features
+
+
+def _repeat_batch(value: Tensor, batch: int, *, dimension: int) -> Tensor:
+    repeats = [1] * value.ndim
+    repeats[dimension] = batch
+    return value.repeat(*repeats)
+
+
+def _slice_output(value: Any, index: int) -> Any:
+    if isinstance(value, Tensor):
+        if value.ndim > 0 and value.shape[0] > index:
+            return value[index : index + 1]
+        return value
+    if isinstance(value, TensorDictBase):
+        return value[index : index + 1]
+    if isinstance(value, dict):
+        return {key: _slice_output(item, index) for key, item in value.items()}
+    if isinstance(value, list):
+        return [_slice_output(item, index) for item in value]
+    return value
+
 
 def propagate_objects_one_frame(
     video_tracker: Any,
@@ -53,29 +78,48 @@ def propagate_objects_one_frame(
 
     store_output = getattr(video_tracker, "_store_frame_output", None)
 
-    # Ensure vision features once before the serial per-object step.
+    # Encode once, then amortize the independent per-object work in one B launch.
     first_state = object_states[pending_idxs[0]]
-    if hasattr(video_tracker, "ensure_frame_features"):
-        video_tracker.ensure_frame_features(first_state, frame_idx)
-    else:
-        video_tracker._get_frame_features(first_state, frame_idx)
+    frame = video_tracker._get_frame_features(first_state, frame_idx)
+    vision_feats, vision_pos, feat_sizes, image = unpack_frame_features(
+        frame, device=first_state["device"]
+    )
+    batch = len(pending_idxs)
+    batched_feats = [_repeat_batch(value, batch, dimension=1) for value in vision_feats]
+    batched_pos = [_repeat_batch(value, batch, dimension=1) for value in vision_pos]
+    batched_image = None
+    if image is not None:
+        batched_image = _repeat_batch(image, batch, dimension=0)
 
-    for i in pending_idxs:
+    # The legacy helper predates BaseVideoStateV1. Its batched path is used only
+    # when every pending object has the same empty/compatible state; the M4
+    # runtime performs the complete per-object state packing contract.
+    output_dict = first_state["output_dict"]
+    out = video_tracker.tracker.track_step(
+        frame_idx=frame_idx,
+        is_init_cond_frame=False,
+        current_vision_feats=batched_feats,
+        current_vision_pos_embeds=batched_pos,
+        feat_sizes=feat_sizes,
+        image=batched_image,
+        point_inputs=None,
+        mask_inputs=None,
+        output_dict=output_dict,
+        num_frames=first_state["num_frames"],
+        track_in_reverse=False,
+        run_mem_encoder=run_mem_encoder,
+        prev_sam_mask_logits=None,
+        use_prev_mem_frame=True,
+    )
+
+    for output_index, i in enumerate(pending_idxs):
         state = object_states[i]
-        out = video_tracker._run_track_step(
-            state=state,
-            frame_idx=frame_idx,
-            is_init_cond_frame=False,
-            point_inputs=None,
-            mask_inputs=None,
-            run_mem_encoder=run_mem_encoder,
-            track_in_reverse=False,
-        )
+        object_out = _slice_output(out, output_index)
         if callable(store_output):
-            store_output(state, "non_cond_frame_outputs", frame_idx, out)
+            store_output(state, "non_cond_frame_outputs", frame_idx, object_out)
         else:
-            state["output_dict"]["non_cond_frame_outputs"][frame_idx] = out
+            state["output_dict"]["non_cond_frame_outputs"][frame_idx] = object_out
         state["frames_already_tracked"][frame_idx] = {"reverse": False}
-        outputs[i] = out
+        outputs[i] = object_out
 
     return outputs

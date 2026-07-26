@@ -833,6 +833,7 @@ def export_bundle(
             "profile_id": PROFILE_ID,
             "capture": "torch.export(strict=False)",
             "opset": 18,
+            "sam3_export_commit": _git_revision(Path(__file__).resolve().parents[1]),
             "checkpoint_sha256": checkpoint_sha256,
             "official_commit": official_commit,
             "graphs": {},

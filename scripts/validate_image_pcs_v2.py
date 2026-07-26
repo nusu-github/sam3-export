@@ -92,6 +92,9 @@ def validate_bundle(bundle_dir: Path) -> dict[str, Any]:
         (bundle_dir / "fixtures" / "cases.json").read_text(encoding="utf-8")
     )
     reference = np.load(bundle_dir / "fixtures" / "official_reference.npz")
+    export_report = json.loads(
+        (bundle_dir / "reports" / "export_report.json").read_text(encoding="utf-8")
+    )
     image_records = {item["id"]: item for item in fixtures["images"]}
     plan_reports: dict[str, Any] = {}
     for plan_id in PLAN_IDS:
@@ -195,6 +198,9 @@ def validate_bundle(bundle_dir: Path) -> dict[str, Any]:
         "format": "sam3-image-pcs-m2-release-validation-v1",
         "status": "pass",
         "profile_id": "b1-1008-l32-q200-fp16",
+        "sam3_export_commit": export_report["sam3_export_commit"],
+        "official_commit": export_report["official_commit"],
+        "checkpoint_sha256": export_report["checkpoint_sha256"],
         "environment": _environment(),
         "gates": {
             "admitted_indices": "exact for every fixture/plan at strict > 0.5",

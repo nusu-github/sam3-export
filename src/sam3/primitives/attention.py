@@ -79,10 +79,11 @@ class Attention(nn.Module):
         k: Float[Tensor, "b h lk d"],
         v: Float[Tensor, "b h lk d"],
         dropout_p: float | int,
+        attn_mask: Tensor | None = None,
     ) -> Float[Tensor, "b h lq d"]:
         scale = 1.0 / math.sqrt(q.shape[-1])
         return F.scaled_dot_product_attention(
-            q, k, v, scale=scale, dropout_p=float(dropout_p)
+            q, k, v, attn_mask=attn_mask, scale=scale, dropout_p=float(dropout_p)
         )
 
     def forward(

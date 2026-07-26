@@ -84,6 +84,7 @@ Text prompts, clicks, and tracks all share the same pixels. One exported
 | **Reuse** | Open-vocab image, text-on-video seed, future multi-prompt batch |
 | **Export** | High priority. Keep **string BPE outside** (string → ids = L3). |
 | **Official** | `forward_text` but strip `List[str]` from the exported module |
+| **Implementation status** | **landed** — `sam3.export.TextTower`; input masks use tokeniser convention (`True` = valid), output masks use PyTorch key-padding convention (`True` = padded). Tests in `tests/test_remaining_export_cuts.py`. |
 
 **Cut rule:** never put `List[str]` or Python tokenizer inside ExportedProgram.
 Export starts at **ids**.
@@ -107,6 +108,11 @@ Prefer: export **A**, and a tiny **C'** that is only:
 ```
 
 so det and interactive share one VisionTower artifact.
+
+**Implementation status:** **landed** — `sam3.export.InteractiveImageEmbed`
+consumes the four flat SAM2 FPN tensors, applies the tracker head's high-res
+projections, and adds the initial-frame `no_mem_embed`. The runtime keeps frame
+memory scheduling outside this view.
 
 ---
 
@@ -145,6 +151,7 @@ Upsample to original H×W can stay L3 (dynamic original size).
 | **Out** | flat `memory [seq,B,C]`, `spatial_shapes`, masks, text-after-enc |
 | **Reuse** | All open-vocab decode variants; multi-prompt if text batched |
 | **Export** | Medium difficulty (DETR-style multi-scale). Worth it: **det body**. |
+| **Implementation status** | **landed** — `sam3.export.GroundingEncode`; static tuple FPN inputs and tensor-only flattened outputs. Tests in `tests/test_remaining_export_cuts.py`. |
 
 ---
 
@@ -157,6 +164,7 @@ Upsample to original H×W can stay L3 (dynamic original size).
 | **Out** | fixed `Q` queries: `pred_boxes [B,Q,4]`, `pred_logits [B,Q,*]`, `pred_masks [B,Q,h,w]` |
 | **Reuse** | Image text det; per-frame det in video |
 | **Export** | Keep **Q fixed**. Threshold / NMS = L3. |
+| **Implementation status** | **landed** — `sam3.export.GroundingDecode`; decoder, score head, and segmentation head stay weight-sharing wrappers. Tests in `tests/test_remaining_export_cuts.py`. |
 
 ---
 
@@ -169,6 +177,7 @@ Upsample to original H×W can stay L3 (dynamic original size).
 | **Out** | `maskmem [B,C_m,h,w]` (e.g. C_m=64) |
 | **Reuse** | Every tracker step after a mask exists |
 | **Export** | Small, high leverage for video packaging |
+| **Implementation status** | **landed** — `sam3.export.MemoryEncode`; accepts logits (or soft masks by static configuration) and returns features plus positional encoding. Tests in `tests/test_remaining_export_cuts.py`. |
 
 ---
 
@@ -181,6 +190,13 @@ Upsample to original H×W can stay L3 (dynamic original size).
 | **Out** | updated object tokens, mask logits, (optional) new memory to append |
 | **Reuse** | Pure track, text-seeded track, multi-object via **batch dim or outer loop** |
 | **Export** | Hardest L2; still the right cut. **Frame loop and object bank = L3**. |
+
+**Implementation status:** **landed** — `sam3.export.TrackerStep` consumes a
+fixed, padded spatial-memory bank plus fixed object-pointer slots and emits one
+object's masks, score, and object token. `MemoryEncode` is intentionally a
+separate artifact for the host to append a new slot. Slot selection and temporal
+position construction remain L3. The tracker RoPE attention now accepts a
+standard key-padding mask so padded slots are genuinely inert.
 
 Do **not** export `propagate()` or `init_state()`. Export **one step**.
 

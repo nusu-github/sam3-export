@@ -316,16 +316,29 @@ class TransformerDecoderLayer(nn.Module):
             )  # (bs*nheads, 1+nq, hw)
 
         # Cross attention to image
+        memory_key_padding_mask_t = (
+            memory_key_padding_mask.transpose(0, 1)
+            if memory_key_padding_mask is not None
+            else None
+        )
+        # MultiheadAttention requires the additive RPB mask and key-padding
+        # mask to use the same dtype.  Preserve the normal bool convention
+        # unless a floating RPB is active.
+        if (
+            memory_key_padding_mask_t is not None
+            and cross_attn_mask is not None
+            and torch.is_floating_point(cross_attn_mask)
+            and memory_key_padding_mask_t.dtype == torch.bool
+        ):
+            memory_key_padding_mask_t = torch.zeros_like(
+                memory_key_padding_mask_t, dtype=cross_attn_mask.dtype
+            ).masked_fill(memory_key_padding_mask_t, float("-inf"))
         tgt2 = self.cross_attn(
             query=self.with_pos_embed(tgt, tgt_query_pos),
             key=self.with_pos_embed(memory, memory_pos),
             value=memory,
             attn_mask=cross_attn_mask,
-            key_padding_mask=(
-                memory_key_padding_mask.transpose(0, 1)
-                if memory_key_padding_mask is not None
-                else None
-            ),
+            key_padding_mask=memory_key_padding_mask_t,
             need_weights=False,
         )[0]
 

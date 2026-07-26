@@ -41,8 +41,14 @@ from sam3.runtime import nms_masks
 The current public cuts use tensor-only inputs and outputs:
 
 - `VisionTower` / `VisionTowerFlat`: image → SAM3/SAM2 multi-scale features.
+- `TextTower`: token ids and tokeniser attention mask → batch-first text memory.
 - `PromptEncode`: fixed-size point prompts → sparse and dense embeddings.
 - `InteractiveDecode`: image embeddings plus fixed-size points → masks and IoU.
+- `InteractiveImageEmbed`: cached SAM2 FPN → image embedding plus high-res views.
+- `GroundingEncode` / `GroundingDecode`: cached image/text tensors → fixed-query
+  boxes, scores, and masks.
+- `MemoryEncode` / `TrackerStep`: a predicted mask → tracker memory, and one
+  fixed-shape tracker update. The runtime owns memory-bank selection and loops.
 
 ```python
 from sam3.export import VisionTowerFlat
@@ -51,6 +57,12 @@ from sam3.weights import build_production_vision_backbone
 neck = build_production_vision_backbone(load_weights=True, add_sam2_neck=True)
 module = VisionTowerFlat(neck)
 # exported = torch.export.export(module, (pixel_values,))
+```
+
+Run all fixed-shape CUDA export round trips with:
+
+```bash
+PYTHONPATH=src python scripts/export_smoke.py
 ```
 
 Runtime postprocessing is not part of an exported graph:

@@ -47,6 +47,7 @@ class RoPEAttention(Attention):
         k: Float[Tensor, "b n_k c_k"],
         v: Float[Tensor, "b n_k c_v"],
         num_k_exclude_rope: int = 0,
+        key_padding_mask: Tensor | None = None,
     ) -> Float[Tensor, "b n_q c_out"]:
         wdtype = self.q_proj.weight.dtype
         if q.dtype != wdtype:
@@ -91,7 +92,12 @@ class RoPEAttention(Attention):
             )
 
         dropout_p = self.dropout_p if self.training else 0.0
-        out = self._attention_core(q, k, v, dropout_p)
+        attn_mask = None
+        if key_padding_mask is not None:
+            # SDPA boolean masks use True for keys that participate; PyTorch
+            # MultiheadAttention key-padding masks use True for ignored keys.
+            attn_mask = (~key_padding_mask.to(torch.bool))[:, None, None, :]
+        out = self._attention_core(q, k, v, dropout_p, attn_mask=attn_mask)
 
         out = self._recombine_heads(out)
         out = self.out_proj(out)

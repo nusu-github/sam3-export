@@ -244,6 +244,9 @@ class TransformerDecoderLayerv2(TransformerDecoderLayerv1):
         query_pos: Float[Tensor, "..."] | None,
         pos: Float[Tensor, "..."] | None,
         num_k_exclude_rope: int = 0,
+        memory_key_padding_mask: Float[Tensor, "..."]
+        | Bool[Tensor, "..."]
+        | None = None,
     ) -> Float[Tensor, "..."]:
         if self.cross_attn_image is None:
             return tgt
@@ -259,6 +262,7 @@ class TransformerDecoderLayerv2(TransformerDecoderLayerv1):
             q=tgt2 + query_pos if self.pos_enc_at_cross_attn_queries else tgt2,
             k=memory + pos if self.pos_enc_at_cross_attn_keys else memory,
             v=memory,
+            key_padding_mask=memory_key_padding_mask,
             **kwds,
         )
         tgt = tgt + self.dropout2(tgt2)
@@ -284,15 +288,28 @@ class TransformerDecoderLayerv2(TransformerDecoderLayerv1):
         assert tgt_mask is None
         assert memory_mask is None
         assert tgt_key_padding_mask is None
-        assert memory_key_padding_mask is None
         assert attn_bias is None
 
         if self.cross_attention_first:
-            tgt = self._forward_ca(tgt, memory, query_pos, pos, num_k_exclude_rope)
+            tgt = self._forward_ca(
+                tgt,
+                memory,
+                query_pos,
+                pos,
+                num_k_exclude_rope,
+                memory_key_padding_mask,
+            )
             tgt = self._forward_sa(tgt, query_pos)
         else:
             tgt = self._forward_sa(tgt, query_pos)
-            tgt = self._forward_ca(tgt, memory, query_pos, pos, num_k_exclude_rope)
+            tgt = self._forward_ca(
+                tgt,
+                memory,
+                query_pos,
+                pos,
+                num_k_exclude_rope,
+                memory_key_padding_mask,
+            )
 
         # MLP
         tgt2 = self.norm3(tgt)

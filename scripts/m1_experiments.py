@@ -957,6 +957,39 @@ def _pcs_output_parity(
     }
 
 
+def _query_output_parity(
+    full: list[np.ndarray], compact: list[np.ndarray]
+) -> dict[str, float | bool]:
+    full_logits, full_boxes, _full_masks, full_presence = full
+    compact_logits, compact_boxes, compact_presence = compact[:3]
+    full_scores = (
+        _sigmoid(full_logits[..., 0])
+        * _sigmoid(full_presence).reshape(full_logits.shape[0], 1)
+    )[0]
+    compact_scores = (
+        _sigmoid(compact_logits[..., 0])
+        * _sigmoid(compact_presence).reshape(compact_logits.shape[0], 1)
+    )[0]
+    order = np.lexsort((np.arange(full_scores.size), -full_scores))[:16]
+    return {
+        "score_max_abs": float(np.max(np.abs(full_scores - compact_scores))),
+        "admitted_indices_exact_at_0_5": bool(
+            np.array_equal(
+                np.flatnonzero(full_scores > 0.5),
+                np.flatnonzero(compact_scores > 0.5),
+            )
+        ),
+        "box_max_abs_top16": float(
+            np.max(
+                np.abs(
+                    full_boxes[0, order].astype(np.float32)
+                    - compact_boxes[0, order].astype(np.float32)
+                )
+            )
+        ),
+    }
+
+
 def _ort_local_parity(
     fixtures: dict[str, Any],
     local_reference: Path,
@@ -1016,7 +1049,7 @@ def _boundary_bytes(outputs: list[ort.OrtValue]) -> int:
 
 
 def _profile_mask_graph(
-    path: Path, inputs: dict[str, ort.OrtValue]
+    path: Path, inputs: dict[str, ort.OrtValue], warmup: int
 ) -> dict[str, float]:
     model = onnx.load(path, load_external_data=False)
     names = [node.name.lower() for node in model.graph.node]
@@ -1039,21 +1072,32 @@ def _profile_mask_graph(
         ),
     }
     session = _session(path, profiling=True)
-    outputs = _run_iobound(session, inputs)
+    outputs: list[ort.OrtValue] = []
+    for _ in range(warmup + 1):
+        outputs = _run_iobound(session, inputs)
     _ = outputs[0].numpy()
     profile_path = Path(session.end_profiling())
     events = json.loads(profile_path.read_text(encoding="utf-8"))
-    totals = {group: 0.0 for group in groups}
+    durations_by_node: dict[str, list[float]] = {}
     for event in events:
         if event.get("cat") != "Node":
             continue
         name = str(event.get("name", "")).lower()
         duration_ms = float(event.get("dur", 0.0)) / 1000.0
-        for group, node_names in groups.items():
-            if any(name.startswith(node_name) for node_name in node_names):
-                totals[group] += duration_ms
-                break
+        matches = [candidate for candidate in names if name.startswith(candidate)]
+        node_name = max(matches, key=len) if matches else None
+        if node_name is not None:
+            durations_by_node.setdefault(node_name, []).append(duration_ms)
+    totals = {group: 0.0 for group in groups}
+    for group, node_names in groups.items():
+        for node_name in node_names:
+            durations = durations_by_node.get(node_name, [])
+            measured = durations[1:] if len(durations) > 1 else durations
+            if measured:
+                totals[group] += statistics.median(measured)
     profile_path.unlink(missing_ok=True)
+    del outputs, session
+    gc.collect()
     return totals
 
 
@@ -1427,9 +1471,7 @@ def _measure_phase(args: argparse.Namespace) -> None:
             parity_records.append(
                 {
                     "id": case["id"],
-                    "query_max_abs": _array_parity(
-                        [full[0], full[1], full[3]], compact[:3]
-                    )["max_abs"],
+                    "query": _query_output_parity(full, compact),
                     "valid_count": valid_count,
                     "selected_mask_max_abs": mask_max_abs,
                     "selected_mask_iou": mask_iou,
@@ -1458,9 +1500,11 @@ def _measure_phase(args: argparse.Namespace) -> None:
             "selected_indices": _cuda_ortvalue(selected),
             "valid_mask": _cuda_ortvalue(valid),
         }
-        operator_profile = _profile_mask_graph(mask_path, mask_inputs)
+        operator_profile = _profile_mask_graph(mask_path, mask_inputs, warmup)
         mask_value = _run_iobound(mask_session, mask_inputs)[0]
-        d2h_metric, _ = _benchmark(lambda: mask_value.numpy(), warmup, repeats)
+        d2h_metric, _ = _benchmark(
+            lambda value=mask_value: value.numpy(), warmup, repeats
+        )
         d2h_bytes = sum(value.nbytes for value in compact[:3]) + compact[3].nbytes
         h2d_bytes = selected.nbytes + valid.nbytes
         e3["profiles"][f"K={k}"] = {
@@ -1478,7 +1522,20 @@ def _measure_phase(args: argparse.Namespace) -> None:
             "mask_operator_profile": operator_profile,
             "mask_d2h": d2h_metric,
         }
-        del encoder_session, query_session, mask_session
+        del (
+            compact,
+            selected,
+            valid,
+            device_values,
+            encoded,
+            query,
+            vision,
+            mask_inputs,
+            mask_value,
+            encoder_session,
+            query_session,
+            mask_session,
+        )
         gc.collect()
 
     report = {

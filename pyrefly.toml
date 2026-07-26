@@ -1,0 +1,13 @@
+# Baseline type gate. It covers the whole package with Pyrefly's
+# high-confidence diagnostics while the project continues its stricter type
+# migration for dynamic PyTorch and jaxtyping-heavy interfaces.
+python-version = "3.12"
+python-platform = "all"
+preset = "basic"
+project-includes = ["src/sam3"]
+search-path = ["src"]
+disable-search-path-heuristics = true
+enable-fallback-search-path = false
+use-ignore-files = true
+min-severity = "error"
+output-format = "full-text"

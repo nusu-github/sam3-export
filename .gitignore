@@ -1,0 +1,29 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.eggs/
+dist/
+build/
+*.egg
+.pytest_cache/
+.hypothesis/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+.tox/
+.venv/
+venv/
+*.so
+
+# Local / runtime
+*.pt
+*.pth
+*.onnx
+*.log
+.DS_Store
+
+# Worker session logs (keep reports)
+docs/worker_logs/

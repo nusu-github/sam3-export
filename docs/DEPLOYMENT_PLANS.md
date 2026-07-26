@@ -10,7 +10,26 @@ Lifecycle and dispatch role are separate. **Shipped**, **candidate** and
 **fallback** describe dispatch. A selected-K recipe can therefore be a
 candidate with an intended optional role without calling it shipped.
 
-## Shipped plan
+## M2 shipped plans
+
+All three plans use SAM3 base text-only image PCS, B1/1008/L32/Q200/FP16,
+ONNX Runtime 1.27.0 CUDA EP and CUDA `OrtValue` IOBinding. They are packaged
+together under `artifacts/sam3-image-pcs-ortcuda-v2/`; the generated manifests
+are the runtime-readable source of truth.
+
+| Plan ID | Lifecycle / dispatch | Composition | Output policy / fallback |
+|---|---|---|---|
+| `sam3_base_image_pcs_text_ortcuda_v1` | shipped / default | required-position-only `DetectorImageEncode` + `TextEncoder` + fused `GroundingFull` | raw-200 final output |
+| `sam3_base_image_pcs_text_ortcuda_selected_k32_v1` | shipped / optional | image/text cache + corrected grounding encoder + query core + K32 mask continuation | fixed K=32; fallback is the fused raw-200 default |
+| `sam3_base_image_pcs_text_ortcuda_split_v1` | shipped / fallback | image/text cache + corrected grounding encoder/decoder | raw-200 compatibility cut |
+
+The optional plan copies only compact scores/boxes/presence to host before
+selection and uploads fixed `selected_indices[1,32]` plus
+`valid_mask[1,32]`; continuation tensors remain CUDA-resident. With zero
+proposals the mask graph is skipped. Failure to provide CUDA EP or IOBinding
+is a capability error, not an implicit CPU or legacy dispatch.
+
+## Legacy shipped plan
 
 ### SAM3 text-only image PCS / legacy split v1
 
@@ -31,10 +50,10 @@ The package remains usable within this scope. M0 does not rewrite its manifest
 or graphs and does not infer missing provenance, cache or file-integrity
 metadata.
 
-## M1-approved candidates
+## M1 decision history
 
-The M1 decisions below establish M2 input. No candidate in this section is
-shipped until the M2 release contract and manifest gates pass.
+The M1 decisions below established the M2 input. The applicable candidates are
+now shipped only through the three M2 manifests above.
 
 ### Fused image PCS candidate
 
@@ -44,10 +63,10 @@ TextEncoder
 GroundingFull        = Fusion + DETR + Mask
 ```
 
-The intended plan ID is `sam3_base_image_pcs_text_ortcuda_v1`. It preserves
+The default plan ID is `sam3_base_image_pcs_text_ortcuda_v1`. It preserves
 independent image and text cache lifetimes while removing the legacy grounding
 encoder/decoder boundary. M1 E1 approves `GroundingFull` as its default
-candidate and the corrected text-only split as a compatibility fallback. The
+recipe and the corrected text-only split as a compatibility fallback. The
 legacy v1 split is neither of those candidates. See
 [the E1 record](decision-records/M1_E1_GROUNDING_FUSION.md).
 
@@ -66,7 +85,7 @@ GroundingQueryCore -> compact scores/boxes/presence -> host selection
                                       GroundingMaskSelectedK
 ```
 
-M1 E3 approves fixed K=32 as an optional M2 candidate. Selection occurs only
+M1 E3 approved fixed K=32 as the shipped optional M2 plan. Selection occurs only
 after the final all-query interaction, and `valid_mask` preserves a fixed
 shape. K=16 and K=64 were measured but are not admitted to the initial plan.
 A public split recipe requires device-resident continuation handoff. A backend
@@ -89,7 +108,7 @@ separate state ABIs.
   four-stage parity.
 - A plan manifest identifies default, optional and fallback applicability per
   backend/profile. An unrecorded fallback is not permitted.
-- Candidate names move into the shipped catalog only after the M2 release
-  contract and manifest validation pass.
+- The three M2 manifests passed schema/package validation and the CUDA/Public
+  API release validator; later plan changes require the same gate.
 - The Host Runtime dispatches by public plan ID and resolved manifest; it does
   not expose backend tensor names in the Public API.

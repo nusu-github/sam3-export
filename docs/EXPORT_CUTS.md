@@ -11,6 +11,29 @@ logical component is not automatically a separately distributed artifact.
 
 ## Shipped deployment bundles
 
+### SAM3 base text-only image PCS / ORT CUDA v1
+
+| Property | Contract |
+|---|---|
+| Status | Shipped v2 bundle; fused default, selected-K32 optional, corrected split fallback |
+| Model/capability | SAM3 base, text-only image PCS |
+| Backend/profile | ORT 1.27.0 CUDA EP + IOBinding; B1/1008/L32/Q200/FP16 |
+| Package manifests | `manifests/<plan-id>.json`, format `sam3-deployment-manifest-v2`, contract `1.0.0` |
+| Host boundary | RGB preprocess/tokenize, cache lifecycle, strict threshold/stable selection, optional mask NMS, output conversion |
+| Exclusions | See [the deployment plan](DEPLOYMENT_PLANS.md); interactive/video/SAM3.1 are not implied |
+
+| Public artifact role | Short tensor I/O / boundary |
+|---|---|
+| `detector-image-encode` | normalized fp16 pixels -> three detector FPN features plus the required low-resolution position tensor; image-session CUDA cache |
+| `text-encode` | token IDs + valid-token mask -> text memory + padding mask; prompt-session CUDA cache |
+| `grounding-full` | cached image/text tensors + compact image mask -> raw 200 scores/boxes/mask logits/presence at the final host boundary |
+| `grounding-encode` + `grounding-decode` | corrected text-only compatibility split used only by the explicit fallback plan |
+| `grounding-query-core` + `grounding-mask-selected-k32` | compact host policy after all-query interaction; large continuation remains device-resident |
+
+Exact backend names, shapes, cache keys, handoffs, policies and file hashes are
+owned by the generated manifests rather than duplicated here. Corresponding
+logical components remain cataloged in [INTERNAL_COMPONENTS.md](INTERNAL_COMPONENTS.md).
+
 ### SAM3 text-only image PCS / legacy split v1
 
 | Property | Contract |
@@ -29,7 +52,7 @@ independent product capabilities.
 
 | File | Tensor contract | Cache / host boundary |
 |---|---|---|
-| `vision_encoder.onnx` | `pixel_values[1,3,1008,1008]` fp16 -> three detector FPN features and three positional tensors | Cache per normalized image. The legacy ABI exposes positional outputs that M1 will evaluate for pruning. |
+| `vision_encoder.onnx` | `pixel_values[1,3,1008,1008]` fp16 -> three detector FPN features and three positional tensors | Cache per normalized image. M1 found these positional outputs excessive for the v2 default, but the legacy ABI remains unchanged. |
 | `text_encoder.onnx` | `input_ids[1,32]` int64, tokenizer-valid `attention_mask[1,32]` bool -> `text_memory[1,32,256]`, key-padding `text_padding_mask[1,32]` | Cache by text, tokenizer revision and model revision. |
 | `grounding_encoder.onnx` | Low-resolution image feature/position/mask plus text memory/mask -> fusion memory and fixed level metadata | Legacy split boundary only. No host policy runs at this boundary. |
 | `grounding_decoder.onnx` | Three image features plus grounding-encoder continuation -> 200 query logits, normalized `cxcywh` boxes, 200 mask logits and presence logits | Final tensors may cross to host for thresholding, selection, resize and rendering. |
@@ -39,12 +62,10 @@ v1 manifest. The manifest does not describe a deployment plan, cache keys,
 capture metadata, file hashes or external-data files; those are requirements
 of the draft v2 contract rather than retroactive claims about v1.
 
-## Planned artifacts are not shipped artifacts
+## Later artifacts are not M2 shipped artifacts
 
-M1 will compare a fused `GroundingFull`, vision-output pruning and an optional
-selected-K recipe. Until the corresponding decision records are approved and
-M2 release gates pass, those names appear only as proposed plans in
-[DEPLOYMENT_PLANS.md](DEPLOYMENT_PLANS.md), never as shipped entries here.
+Interactive image PVS, video, SAM3.1 and other backend/profile variants remain
+later milestones. Internal smoke wrappers do not make them shipped artifacts.
 
 ## Catalog admission rule
 

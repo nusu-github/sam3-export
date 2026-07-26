@@ -4,6 +4,10 @@ Status: reviewed M0 baseline at `sam3-export` commit
 `847db18e0558816d88d592f24a45c36593ae1e8e` and official-model repository
 commit `cdff5a927beba49b6249c1e2973b29bd64f40b83`.
 
+This remains the historical M0 inventory. M2 additions are owned by
+[EXPORT_CUTS.md](EXPORT_CUTS.md) and [DEPLOYMENT_PLANS.md](DEPLOYMENT_PLANS.md);
+they do not retroactively add metadata to the legacy files below.
+
 ## Shipped package inventory
 
 | Item | Classification | Scope / disposition |
@@ -45,8 +49,8 @@ global image size, text length and opset. It does not contain:
 - baked versus Host Runtime policy.
 
 The Space additionally hard-codes graph filenames, dimensions and positional
-output indexes. Manifest-driven runtime dispatch belongs to M2; M0 records the
-limitation without changing runtime behavior.
+output indexes. M2 added a separate manifest-driven bundle/runtime; this M0
+inventory records the legacy limitation without changing its behavior.
 
 ## Documentation disposition
 

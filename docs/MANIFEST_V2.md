@@ -1,12 +1,13 @@
-# Deployment manifest v2 draft
+# Deployment manifest v2 release contract
 
-The draft JSON Schema at
+The JSON Schema at
 [`schemas/sam3-deployment-manifest-v2.schema.json`](../schemas/sam3-deployment-manifest-v2.schema.json)
 defines the machine-readable contract for a deployment **plan bundle**, not an
 individual logical component. It uses JSON Schema Draft 2020-12 and fixes
 `format` to `sam3-deployment-manifest-v2`.
 
-This is an M0 draft. The current `sam3-split-onnx-v1` manifest remains a
+M2 promotes this schema for the fixed image PCS ORT CUDA plans. The current
+`sam3-split-onnx-v1` manifest remains a
 separate legacy format. Loaders dispatch on `format`; they must not treat v1 as
 a partial v2 document or invent missing provenance, policy, hash, cache or
 handoff values.
@@ -43,26 +44,20 @@ records so it has no self-hash cycle.
 | Public API plan ID and contract version | API Owner + Runtime Lead |
 | Experiment measurements and adoption decision | Export Tech Lead + Runtime Lead; Product/Integration Owner for optional selected-K |
 
-The schema fixture under `tests/fixtures/manifest_v2/` is synthetic and owned
-by the schema tests. It demonstrates structural validation; it is not an
-official model parity fixture and cannot satisfy a release gate.
+The schema fixture under `tests/fixtures/manifest_v2/` is a minimal skeleton of
+the M2 fused default plan. It demonstrates structural validation only; the
+generated bundle manifests and owned image fixtures satisfy the release gate.
 
 ## Validation layers
 
-JSON Schema validates required fields, vocabulary, hash syntax, the presence of
-bounded-shape range fields and object closure. A later semantic/package linter
-must additionally validate:
+JSON Schema validates the release blocks, main types, current vocabulary and
+hash form. The M2 package validator additionally checks unique IDs, references
+used by the image PCS adapter, file existence/size/SHA-256, required CUDA
+IOBinding capabilities and named fallback-plan presence. ORT session creation
+checks declared input/output bindings against each graph. It does not implement
+a general DAG executor or future-backend cross-rule matrix.
 
-- ID uniqueness and every cross-reference;
-- `minimum <= optimum <= maximum` for every bounded dimension;
-- acyclic execution and producer/consumer shape compatibility;
-- actual file sizes/hashes and ONNX external-data locations;
-- cache key sources and invalidation completeness;
-- required-device handoff capability and fallback availability; and
-- release-state parity and policy completeness.
-
-M0 includes schema self-validation, one valid synthetic fixture and negative
-cases for missing checkpoint digest, a bounded profile without a range,
-unsafe file paths, incomplete parity evidence and invalid ONNX opset. M1 can
-record E1-E3 candidate manifests and fixture hashes with this vocabulary; M2
-promotes the reviewed schema and implements manifest-driven runtime dispatch.
+Generated manifests live at `manifests/<plan-id>.json` in the ignored release
+bundle. Their format is `sam3-deployment-manifest-v2`, contract version is
+`1.0.0`, and profile is `b1-1008-l32-q200-fp16`. v1 remains separately
+dispatched and receives no inferred v2 metadata.

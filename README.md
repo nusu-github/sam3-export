@@ -12,7 +12,8 @@ Runtime.
 
 See the [glossary](docs/GLOSSARY.md), [component policy](docs/EXPORT_POLICY.md),
 [public artifact catalog](docs/EXPORT_CUTS.md), and
-[deployment plans](docs/DEPLOYMENT_PLANS.md).
+[deployment plans](docs/DEPLOYMENT_PLANS.md). The M2 Public API is specified in
+[IMAGE_PCS_API.md](docs/IMAGE_PCS_API.md).
 
 ## Package layout
 
@@ -75,12 +76,20 @@ Runtime postprocessing is not part of an exported graph:
 from sam3.runtime import associate_det_trk, nms_masks
 ```
 
-The only currently shipped bundle is **SAM3 text-only image PCS / legacy split
-v1**, profiled for ONNX Runtime CUDA EP + IOBinding, fp16, batch 1, a
-1008x1008 image and text length 32. It does not cover geometry/exemplar prompts,
-production interactive PVS, video, semantic output or SAM3.1. M1 will decide
-the fused, pruned and optional selected-K recipes before a new default is
-published.
+M2 ships **SAM3 base text-only image PCS / ORT CUDA v1** for the fixed
+B1/1008/L32/Q200/FP16 profile. Its manifest-driven plans are fused raw-200
+default, selected-K32 optional and corrected split fallback. Build the ignored
+release bundle with:
+
+```bash
+PYTHONPATH=src python scripts/export_image_pcs_v2.py \
+  --official-repo ../sam3 --checkpoint /path/to/sam3.pt
+```
+
+The previous **SAM3 text-only image PCS / legacy split v1** bundle remains
+usable and separately dispatched; it is not the new default or fallback.
+Neither bundle covers geometry/exemplar prompts, production interactive PVS,
+video, semantic output or SAM3.1.
 
 ## Installation
 
@@ -91,6 +100,14 @@ pip install -e '.[test]'
 `timm`, `torchvision`, and TensorDict support the model components and tracker
 state. `scipy` is used only by the host-side Hungarian association routine; it
 is never imported by the export cuts.
+
+The core package includes manifest validation but delays importing ONNX
+Runtime until session creation. Install the pinned CUDA runtime only when using
+the M2 bundle:
+
+```bash
+pip install -e '.[ort-cuda]'
+```
 
 ## Quality checks
 

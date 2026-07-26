@@ -6,12 +6,12 @@ import pytest
 import torch
 from torch.export import export
 
-from sam3.export.interactive_decode import (
+from sam3.export.fixtures.interactive_decode import (
     INTERACTIVE_NUM_MASKS,
     InteractiveDecode,
     InteractiveDecodeSpec,
 )
-from sam3.export.prompt_encode import (
+from sam3.export.fixtures.prompt_encode import (
     PROMPT_EMBED_DIM,
     PROMPT_IMAGE_EMBED_HW,
     PROMPT_N_SPARSE,

@@ -56,12 +56,15 @@ class TwoWayAttentionBlock(nn.Module):
         keys: Float[Tensor, "b n_k c"],
         query_pe: Float[Tensor, "b n_q c"],
         key_pe: Float[Tensor, "b n_k c"],
+        query_valid: Tensor | None = None,
     ) -> tuple[Float[Tensor, "b n_q c"], Float[Tensor, "b n_k c"]]:
         if self.skip_first_layer_pe:
-            queries = self.self_attn(q=queries, k=queries, v=queries)
+            queries = self.self_attn(
+                q=queries, k=queries, v=queries, key_valid=query_valid
+            )
         else:
             q = queries + query_pe
-            attn_out = self.self_attn(q=q, k=q, v=queries)
+            attn_out = self.self_attn(q=q, k=q, v=queries, key_valid=query_valid)
             queries = queries + attn_out
         queries = self.norm1(queries)
 
@@ -77,7 +80,9 @@ class TwoWayAttentionBlock(nn.Module):
 
         q = queries + query_pe
         k = keys + key_pe
-        attn_out = self.cross_attn_image_to_token(q=k, k=q, v=queries)
+        attn_out = self.cross_attn_image_to_token(
+            q=k, k=q, v=queries, key_valid=query_valid
+        )
         keys = keys + attn_out
         keys = self.norm4(keys)
 
@@ -127,6 +132,7 @@ class TwoWayTransformer(nn.Module):
         image_embedding: Float[Tensor, "b c h w"],
         image_pe: Float[Tensor, "b c h w"],
         point_embedding: Float[Tensor, "b n c"],
+        point_valid: Tensor | None = None,
     ) -> tuple[Float[Tensor, "b n c"], Float[Tensor, "b hw c"]]:
         bs, c, h, w = image_embedding.shape
         image_embedding = image_embedding.flatten(2).permute(0, 2, 1)
@@ -141,6 +147,7 @@ class TwoWayTransformer(nn.Module):
                 keys=keys,
                 query_pe=point_embedding,
                 key_pe=image_pe,
+                query_valid=point_valid,
             )
 
         q = queries + point_embedding

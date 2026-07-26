@@ -28,20 +28,16 @@ from .grounding import (
     GroundingQueryCore,
     TextOnlyPromptEncode,
 )
-from .interactive_decode import (
-    INTERACTIVE_NUM_MASKS,
-    InteractiveDecode,
-    InteractiveDecodeSpec,
+from .interactive_image import (
+    InitialNoMemoryCondition,
+    InteractiveFeatureProject,
+    InteractiveImageEncodeInitial,
+    InteractivePredict,
+    InteractivePredictMultimask3,
+    InteractivePredictSingle1,
 )
 from .interactive_image_embed import InteractiveImageEmbed
 from .memory_encode import MemoryEncode
-from .prompt_encode import (
-    PROMPT_EMBED_DIM,
-    PROMPT_N_POINTS,
-    PROMPT_N_SPARSE,
-    PromptEncode,
-    PromptEncodeSpec,
-)
 from .text_tower import TextTower, TextTowerSpec
 from .tracker_step import TrackerStep
 from .vision_tower import VisionTower, VisionTowerFlat, VisionTowerProfiled
@@ -63,18 +59,16 @@ __all__ = [
     "validate_vision_output",
     "vision_output_from_flat",
     "vision_output_to_flat",
-    "PromptEncode",
-    "PromptEncodeSpec",
-    "PROMPT_EMBED_DIM",
-    "PROMPT_N_POINTS",
-    "PROMPT_N_SPARSE",
-    "InteractiveDecode",
-    "InteractiveDecodeSpec",
-    "INTERACTIVE_NUM_MASKS",
     "DetectorEncoderDecoder",
     "TextTower",
     "TextTowerSpec",
     "InteractiveImageEmbed",
+    "InteractiveFeatureProject",
+    "InitialNoMemoryCondition",
+    "InteractiveImageEncodeInitial",
+    "InteractivePredict",
+    "InteractivePredictMultimask3",
+    "InteractivePredictSingle1",
     "GroundingEncode",
     "GroundingEncodeTextOnly",
     "GroundingDecode",

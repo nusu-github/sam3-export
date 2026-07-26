@@ -99,6 +99,7 @@ class MaskDecoder(nn.Module):
         multimask_output: bool,
         repeat_image: bool,
         high_res_features: Optional[list[Float[Tensor, "b c_hr h_hr w_hr"]]] = None,
+        sparse_prompt_valid: Tensor | None = None,
     ) -> tuple[
         Float[Tensor, "b n_masks h_out w_out"],
         Float[Tensor, "b n_masks"],
@@ -112,6 +113,7 @@ class MaskDecoder(nn.Module):
             dense_prompt_embeddings=dense_prompt_embeddings,
             repeat_image=repeat_image,
             high_res_features=high_res_features,
+            sparse_prompt_valid=sparse_prompt_valid,
         )
 
         if multimask_output:
@@ -138,6 +140,7 @@ class MaskDecoder(nn.Module):
         dense_prompt_embeddings: Float[Tensor, "b c h w"],
         repeat_image: bool,
         high_res_features: Optional[list[Float[Tensor, "b c_hr h_hr w_hr"]]] = None,
+        sparse_prompt_valid: Tensor | None = None,
     ) -> tuple[
         Float[Tensor, "b n_masks h_out w_out"],
         Float[Tensor, "b n_masks"],
@@ -165,6 +168,14 @@ class MaskDecoder(nn.Module):
             sparse_prompt_embeddings.size(0), -1, -1
         )
         tokens = torch.cat((output_tokens, sparse_prompt_embeddings), dim=1)
+        token_valid = None
+        if sparse_prompt_valid is not None:
+            output_valid = torch.ones(
+                (sparse_prompt_valid.shape[0], output_tokens.shape[1]),
+                dtype=torch.bool,
+                device=sparse_prompt_valid.device,
+            )
+            token_valid = torch.cat((output_valid, sparse_prompt_valid), dim=1)
 
         if repeat_image:
             src = torch.repeat_interleave(image_embeddings, tokens.shape[0], dim=0)
@@ -183,7 +194,10 @@ class MaskDecoder(nn.Module):
         pos_src = torch.repeat_interleave(image_pe, tokens.shape[0], dim=0)
 
         b, c, h, w = src.shape
-        hs, src = self.transformer(src, pos_src, tokens)
+        if token_valid is None:
+            hs, src = self.transformer(src, pos_src, tokens)
+        else:
+            hs, src = self.transformer(src, pos_src, tokens, point_valid=token_valid)
         iou_token_out = hs[:, s, :]
         mask_tokens_out = hs[:, s + 1 : s + 1 + self.num_mask_tokens, :]
 

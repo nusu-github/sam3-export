@@ -1,4 +1,4 @@
-"""Cut E — InteractiveDecode (image embed + fixed points → multimask)."""
+"""Test-only tiny interactive decode fixture."""
 
 from __future__ import annotations
 
@@ -8,7 +8,7 @@ from typing import Final
 from torch import Tensor
 import torch.nn as nn
 
-from sam3.export.prompt_encode import (
+from sam3.export.fixtures.prompt_encode import (
     PROMPT_EMBED_DIM,
     PROMPT_IMAGE_EMBED_HW,
     PROMPT_INPUT_IMAGE_HW,

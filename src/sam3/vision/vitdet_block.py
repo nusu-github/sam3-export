@@ -7,11 +7,36 @@ from typing import Optional
 
 from jaxtyping import Float
 from timm.layers import Mlp
+import torch
 from torch import Tensor
 import torch.nn as nn
 
 from .vitdet_attention import Attention
 from .vitdet_ops import DropPath, LayerScale, window_partition, window_unpartition
+
+
+class OfficialInferenceMlp(Mlp):
+    """Match the inference-only MLP used by the official SAM3 ViT trunk."""
+
+    def forward(self, x: Tensor) -> Tensor:
+        if torch.is_grad_enabled():
+            raise ValueError("OfficialInferenceMlp requires gradients to be disabled")
+        bias = self.fc1.bias.detach().to(torch.bfloat16)
+        weight = self.fc1.weight.detach().to(torch.bfloat16)
+        flat = x.to(torch.bfloat16).view(-1, x.shape[-1])
+        hidden = torch.ops.aten._addmm_activation(
+            bias,
+            flat,
+            weight.t(),
+            beta=1,
+            alpha=1,
+            use_gelu=True,
+        ).view(*x.shape[:-1], weight.shape[0])
+        hidden = self.drop1(hidden)
+        hidden = self.norm(hidden)
+        hidden = hidden.to(self.fc2.weight.dtype)
+        hidden = self.fc2(hidden)
+        return self.drop2(hidden)
 
 
 class Block(nn.Module):
@@ -39,6 +64,7 @@ class Block(nn.Module):
         init_values: Optional[float | int] = None,
         attn_type: str = "vanilla",
         use_rope_real: bool = False,
+        official_inference_mlp: bool = False,
     ) -> None:
         if dim <= 0:
             raise ValueError("dim must be > 0")
@@ -72,7 +98,8 @@ class Block(nn.Module):
         )
         self.drop_path = DropPath(drop_path) if drop_path > 0.0 else nn.Identity()
         self.norm2 = norm_layer(dim)
-        self.mlp = Mlp(
+        mlp_type = OfficialInferenceMlp if official_inference_mlp else Mlp
+        self.mlp = mlp_type(
             in_features=dim,
             hidden_features=int(dim * mlp_ratio),
             act_layer=act_layer,

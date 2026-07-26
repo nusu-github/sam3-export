@@ -1,4 +1,4 @@
-"""Cut D — fixed-shape PromptEncode for torch.export."""
+"""Test-only fixed-shape PromptEncode fixture for torch.export."""
 
 from __future__ import annotations
 

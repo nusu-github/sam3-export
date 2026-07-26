@@ -58,6 +58,7 @@ class ViT(nn.Module):
         ln_post: bool = False,
         bias_patch_embed: bool = True,
         use_rope_real: bool = False,
+        official_inference_mlp: bool = False,
     ) -> None:
         drop_path_rate = float(drop_path_rate)
         dropout = float(dropout)
@@ -147,6 +148,7 @@ class ViT(nn.Module):
                 init_values=init_values,
                 attn_type=attn_type,
                 use_rope_real=use_rope_real,
+                official_inference_mlp=official_inference_mlp,
             )
             self.blocks.append(block)
 

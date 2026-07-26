@@ -91,6 +91,7 @@ class Attention(nn.Module):
         q: Float[Tensor, "b n_q c_q"],
         k: Float[Tensor, "b n_k c_k"],
         v: Float[Tensor, "b n_k c_v"],
+        key_valid: Tensor | None = None,
     ) -> Float[Tensor, "b n_q c_out"]:
         # Permanent bf16/fp16 weights + float PE (or autocast edges) otherwise
         # fail with "mat1 and mat2 must have the same dtype".
@@ -110,7 +111,10 @@ class Attention(nn.Module):
         v = self._separate_heads(v, self.num_heads)
 
         dropout_p = self.dropout_p if self.training else 0.0
-        out = self._attention_core(q, k, v, dropout_p)
+        attn_mask = None
+        if key_valid is not None:
+            attn_mask = key_valid[:, None, None, :]
+        out = self._attention_core(q, k, v, dropout_p, attn_mask)
 
         out = self._recombine_heads(out)
         out = self.out_proj(out)

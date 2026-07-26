@@ -166,6 +166,7 @@ def build_production_vit(**overrides: Any) -> ViT:
         bias_patch_embed=False,
         use_rope_real=True,  # sam3 stores real/imag buffers
         use_rel_pos_blocks=False,
+        official_inference_mlp=True,
         drop_path_rate=0.0,  # inference; ckpt has no drop-path params
         dropout=0.0,
     )

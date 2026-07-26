@@ -20,9 +20,13 @@ Public deployment artifacts are listed only in
 | `GroundingFullFeatureOnly` | M1 candidate component | E2 consumer that recomputes the required position tensor for the optional feature-only boundary. | M1 E2 harness and decision record |
 | `GroundingQueryCore` / `GroundingMaskSelectedK` | Internal components used by M2 optional | E3 policy cut after final all-query interaction. M2 admits only K=32; large continuation remains device-resident. | M1 E3 + M2 release validator |
 | `DetectorEncoderDecoder` | Internal component | Overlaps grounding responsibilities and remains an internal compatibility/test surface pending responsibility cleanup. | Detector component tests |
-| `InteractiveImageEmbed` | Internal component | Mixes image feature projection with initial/no-memory conditioning; M3 will separate the logical contracts. | Interactive export tests |
-| `PromptEncode` | Test-only fixture | Fixed tiny/default point contract used for unit export coverage. It is not the production prompt encoder artifact. | Prompt interactive export tests |
-| `InteractiveDecode` | Test-only fixture | Self-contained tiny SAM head; it does not consume `PromptEncode` outputs and is not a production pipeline. | Prompt interactive export tests |
+| `InteractiveImageEmbed` | Internal compatibility component | Older mixed projection/initial-condition view retained for component tests; it is not used by the M3 release plan. | Interactive export tests |
+| `InteractiveFeatureProject` | M3 logical component | Projects production SAM2 FPN levels to the 72 base and 288/144 high-resolution image views without temporal conditioning. | M3 local/official parity and cut measurement |
+| `InitialNoMemoryCondition` | M3 logical component | Adds the checkpoint-owned initial/no-memory condition to the 72x72 base view. Its identity is part of the M3 cache key. | M3 cache/repeated-click gate |
+| `InteractiveImageEncodeInitial` | M3 plan component | Fuses vision, feature projection and initial conditioning for the shipped image-only artifact; this wrapper is not a claim that every logical component ships separately. | M3 export/CUDA validator |
+| `InteractivePredictMultimask3` / `InteractivePredictSingle1` | M3 plan components | Production prompt encoder and mask decoder with fixed P16/box1/mask288 validity ABI and static output policy. | M3 official-to-Public parity |
+| `sam3.export.fixtures.PromptEncode` | Test-only fixture | Fixed tiny/default point contract used for unit export coverage. It is not the production prompt encoder artifact. | Prompt interactive export tests |
+| `sam3.export.fixtures.InteractiveDecode` | Test-only fixture | Self-contained tiny SAM head; it does not consume `PromptEncode` outputs and is not a production pipeline. | Prompt interactive export tests |
 | `MemoryEncode` | Internal component / fixture | Logical memory operation. Variant-specific scale/bias and single/mux layout are not a generic production ABI. | Remaining-cut tests; M4/M5 mapping tests later |
 | `TrackerStep` | Internal SAM3-base component / fixture | Fixed per-object tracker step. It is neither a one-object-per-session mandate nor a SAM3.1 Multiplex implementation. | Remaining-cut tests; M4 trajectory tests later |
 
@@ -31,9 +35,9 @@ coverage is a component-quality gate, not a public artifact release list.
 
 ## Planned canonical components
 
-Names such as `VisionTrunk`, `DetectorNeck`, `InteractiveFeatureProject`,
-`InitialNoMemoryCondition`, `BaseTrackerPreview`, `MemoryEncodeSingle`, `Mux`,
-`Demux`, `TrackPropagateMux16` and `MemoryEncodeMux16` are architectural
+Names such as `VisionTrunk`, `DetectorNeck`, `BaseTrackerPreview`,
+`MemoryEncodeSingle`, `Mux`, `Demux`, `TrackPropagateMux16` and
+`MemoryEncodeMux16` are architectural
 component names. They become code and fixtures in the milestone that needs
 them; listing them does not claim they are implemented or shipped.
 

@@ -11,6 +11,26 @@ logical component is not automatically a separately distributed artifact.
 
 ## Shipped deployment bundles
 
+### SAM3 base interactive image PVS / point-box-mask / ORT CUDA v1
+
+| Property | Contract |
+|---|---|
+| Status | Shipped v2 bundle; default only within the interactive image PVS use case |
+| Backend/profile | ORT 1.27.0 CUDA EP + IOBinding; `b1-1008-p16-box1-mask288-fp16` |
+| Package manifest | `sam3_base_interactive_image_pvs_ortcuda_v1`, contract `1.0.0` |
+| Host boundary | Image/prompt validation and packing, original-to-model coordinates, image cache lifecycle, multimask dispatch, final resize/threshold |
+| Exclusions | Text image PCS dispatch, video/memory state, object batching and SAM3.1 |
+
+| Public artifact role | Short tensor I/O / boundary |
+|---|---|
+| `interactive-image-encode-initial` | normalized `pixel_values[1,3,1008,1008]` fp16 -> `image_embedding[1,256,72,72]`, `high_res_0[1,32,288,288]`, `high_res_1[1,64,144,144]`; image-session CUDA cache fixed to the initial/no-memory condition |
+| `interactive-predict-multimask3` | cached CUDA features + P16/box1/mask288 fixed prompt/validity tensors -> float32 `low_res_logits[1,3,288,288]` and `scores[1,3]` |
+| `interactive-predict-single1` | same fixed prompt ABI -> float32 `low_res_logits[1,1,288,288]` and `scores[1,1]`; official single-mask stability policy is baked |
+
+Exact bindings, prompt validity, cache key, file hashes and required device
+handoffs are manifest-owned. The Public API contract is
+[INTERACTIVE_IMAGE_API.md](INTERACTIVE_IMAGE_API.md).
+
 ### SAM3 base text-only image PCS / ORT CUDA v1
 
 | Property | Contract |
@@ -62,10 +82,10 @@ v1 manifest. The manifest does not describe a deployment plan, cache keys,
 capture metadata, file hashes or external-data files; those are requirements
 of the draft v2 contract rather than retroactive claims about v1.
 
-## Later artifacts are not M2 shipped artifacts
+## Later artifacts are not shipped artifacts
 
-Interactive image PVS, video, SAM3.1 and other backend/profile variants remain
-later milestones. Internal smoke wrappers do not make them shipped artifacts.
+Video, SAM3.1 and other backend/profile variants remain later milestones.
+Internal smoke wrappers do not make them shipped artifacts.
 
 ## Catalog admission rule
 

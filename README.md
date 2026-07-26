@@ -12,8 +12,9 @@ Runtime.
 
 See the [glossary](docs/GLOSSARY.md), [component policy](docs/EXPORT_POLICY.md),
 [public artifact catalog](docs/EXPORT_CUTS.md), and
-[deployment plans](docs/DEPLOYMENT_PLANS.md). The M2 Public API is specified in
-[IMAGE_PCS_API.md](docs/IMAGE_PCS_API.md).
+[deployment plans](docs/DEPLOYMENT_PLANS.md). Public APIs are specified in
+[IMAGE_PCS_API.md](docs/IMAGE_PCS_API.md) and
+[INTERACTIVE_IMAGE_API.md](docs/INTERACTIVE_IMAGE_API.md).
 
 ## Package layout
 
@@ -47,9 +48,10 @@ treating any wrapper as a supported deployment boundary.
 
 - `VisionTower` / `VisionTowerFlat`: image → SAM3/SAM2 multi-scale features.
 - `TextTower`: token ids and tokeniser attention mask → batch-first text memory.
-- `PromptEncode`: fixed-size tiny point fixture → sparse and dense embeddings.
-- `InteractiveDecode`: self-contained tiny interactive fixture → masks and IoU.
-- `InteractiveImageEmbed`: cached SAM2 FPN → image embedding plus high-res views.
+- `InteractiveFeatureProject` / `InitialNoMemoryCondition`: separate logical
+  image-view contracts fused by the M3 image-only plan.
+- `sam3.export.fixtures.PromptEncode` / `InteractiveDecode`: tiny test-only
+  fixtures; they are absent from production manifests and public catalogs.
 - `GroundingEncode` / `GroundingDecode`: legacy split components and M1
   fused-vs-split baseline → fixed-query boxes, scores, and masks.
 - `MemoryEncode` / `TrackerStep`: a predicted mask → tracker memory, and one
@@ -88,8 +90,24 @@ PYTHONPATH=src python scripts/export_image_pcs_v2.py \
 
 The previous **SAM3 text-only image PCS / legacy split v1** bundle remains
 usable and separately dispatched; it is not the new default or fallback.
-Neither bundle covers geometry/exemplar prompts, production interactive PVS,
+Neither text-PCS bundle covers geometry/exemplar prompts, interactive PVS,
 video, semantic output or SAM3.1.
+
+M3 separately ships **SAM3 base interactive image PVS / point-box-mask / ORT
+CUDA v1** for `b1-1008-p16-box1-mask288-fp16`. Its default role is scoped to
+interactive image PVS and does not replace the M2 text-PCS default. Build the
+ignored bundle with:
+
+```bash
+PYTHONPATH=src python scripts/export_interactive_image_v2.py \
+  --official-repo ../sam3 --checkpoint /path/to/sam3.pt
+```
+
+The plan retains three image features as CUDA `OrtValue`s across repeated
+clicks and copies only final scores/low-resolution logits to host. It has no
+CPU/legacy fallback and excludes video memory state, object batching and
+SAM3.1. See the public artifact and deployment-plan documents for the exact
+scope.
 
 ## Installation
 
@@ -103,7 +121,7 @@ is never imported by the export cuts.
 
 The core package includes manifest validation but delays importing ONNX
 Runtime until session creation. Install the pinned CUDA runtime only when using
-the M2 bundle:
+the M2 or M3 bundles:
 
 ```bash
 pip install -e '.[ort-cuda]'

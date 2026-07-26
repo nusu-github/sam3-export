@@ -10,6 +10,44 @@ Lifecycle and dispatch role are separate. **Shipped**, **candidate** and
 **fallback** describe dispatch. A selected-K recipe can therefore be a
 candidate with an intended optional role without calling it shipped.
 
+## M3 shipped interactive image plan
+
+`sam3_base_interactive_image_pvs_ortcuda_v1` is shipped/default only for
+**SAM3 base interactive image PVS / point-box-mask / ORT CUDA v1**. It is
+packaged under `artifacts/sam3-interactive-image-pvs-ortcuda-v2/` with the
+fixed `b1-1008-p16-box1-mask288-fp16` profile. It does not replace the M2
+text-only image PCS default.
+
+```text
+InteractiveImageEncodeInitial
+  = VisionTrunk + SAM2Neck + InteractiveFeatureProject
+    + InitialNoMemoryCondition
+                  |
+                  +-- image-session CUDA cache --+
+                                                   |
+              host multimask policy ---------------+
+                  |                                |
+                  v                                v
+ InteractivePredictMultimask3        InteractivePredictSingle1
+```
+
+The image-only recipe fuses feature projection and the checkpoint-owned
+initial/no-memory condition after keeping their logical component contracts
+separate. The cache key includes that condition and the static profile, so it
+cannot represent an M4 memory-aware image view. Multimask is host dispatch
+between two static artifacts, not a runtime tensor branch: three masks are the
+Public API default, while repeated click can feed one selected low-resolution
+logit to the single-mask artifact.
+
+The three cached image tensors remain CUDA-resident through every prediction.
+Only scores and final low-resolution logits cross D2H. CUDA EP and IOBinding
+are required; there is no CPU pyramid, legacy split or text-PCS fallback. The
+plan has no video/object/memory state and performs no preview, memory encode or
+commit. Those transitions remain M4 work.
+
+The fused image-only cut and its applicable profile are fixed by the
+[M3 decision record](decision-records/M3_INTERACTIVE_IMAGE_CUT.md).
+
 ## M2 shipped plans
 
 All three plans use SAM3 base text-only image PCS, B1/1008/L32/Q200/FP16,
@@ -95,11 +133,9 @@ copying large continuation tensors through CPU/NumPy. See
 
 ## Later plans
 
-Interactive image PVS (M3), SAM3 base video (M4), SAM3.1 native Multiplex
-(M5) and additional backend bundles (M6) remain planned. Their architectural
-names do not reserve public artifact IDs or contracts at M0. In particular,
-SAM3 base object batching and SAM3.1 16-slot bucket-space Multiplex require
-separate state ABIs.
+SAM3 base video (M4), SAM3.1 native Multiplex (M5) and additional backend
+bundles (M6) remain planned. SAM3 base object batching and SAM3.1 16-slot
+bucket-space Multiplex require separate state ABIs.
 
 ## Decision and publication gates
 
@@ -108,7 +144,8 @@ separate state ABIs.
   four-stage parity.
 - A plan manifest identifies default, optional and fallback applicability per
   backend/profile. An unrecorded fallback is not permitted.
-- The three M2 manifests passed schema/package validation and the CUDA/Public
-  API release validator; later plan changes require the same gate.
+- The M2 manifests and M3 interactive manifest passed schema/package
+  validation and their CUDA/Public API release validators; later plan changes
+  require the same gate.
 - The Host Runtime dispatches by public plan ID and resolved manifest; it does
   not expose backend tensor names in the Public API.

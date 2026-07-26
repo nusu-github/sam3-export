@@ -1,0 +1,774 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://sam3-export.local/schemas/sam3-deployment-manifest-v2.schema.json",
+  "title": "SAM3 deployment plan manifest v2",
+  "description": "Draft machine-readable contract for one semantic deployment plan and backend bundle.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "format",
+    "manifest_id",
+    "scope",
+    "plan",
+    "model",
+    "backend",
+    "profile",
+    "tensors",
+    "artifacts",
+    "execution",
+    "caches",
+    "handoffs",
+    "capture",
+    "policies",
+    "fixtures",
+    "files"
+  ],
+  "properties": {
+    "format": { "const": "sam3-deployment-manifest-v2" },
+    "manifest_id": { "$ref": "#/$defs/id" },
+    "scope": { "$ref": "#/$defs/scope" },
+    "plan": { "$ref": "#/$defs/plan" },
+    "model": { "$ref": "#/$defs/model" },
+    "backend": { "$ref": "#/$defs/backend" },
+    "profile": { "$ref": "#/$defs/profile" },
+    "tensors": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/tensor" }
+    },
+    "artifacts": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/artifact" }
+    },
+    "execution": { "$ref": "#/$defs/execution" },
+    "caches": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/cache" }
+    },
+    "handoffs": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/handoff" }
+    },
+    "capture": { "$ref": "#/$defs/capture" },
+    "policies": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/policy" }
+    },
+    "fixtures": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/fixture" }
+    },
+    "files": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/file" }
+    }
+  },
+  "$defs": {
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$"
+    },
+    "version": {
+      "type": "string",
+      "pattern": "^[0-9]+(?:\\.[0-9]+){0,2}(?:-[a-z0-9.-]+)?$"
+    },
+    "sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "digest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["algorithm", "value"],
+      "properties": {
+        "algorithm": { "const": "sha256" },
+        "value": { "$ref": "#/$defs/sha256" }
+      }
+    },
+    "scope": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "classification",
+        "lifecycle",
+        "dispatch_role",
+        "scope_label",
+        "use_case",
+        "prompt_coverage",
+        "capabilities",
+        "exclusions"
+      ],
+      "properties": {
+        "classification": {
+          "enum": [
+            "public-deployment",
+            "internal-component",
+            "internal-fixture",
+            "legacy-shipped"
+          ]
+        },
+        "lifecycle": {
+          "enum": ["shipped", "candidate", "planned", "test-only", "deprecated"]
+        },
+        "dispatch_role": {
+          "enum": ["default", "optional", "fallback", "legacy", "not-applicable"]
+        },
+        "scope_label": { "type": "string", "minLength": 1 },
+        "use_case": {
+          "enum": [
+            "image-pcs",
+            "interactive-image-pvs",
+            "base-video-tracking",
+            "multiplex-video-tracking",
+            "schema-validation"
+          ]
+        },
+        "prompt_coverage": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "enum": ["text", "geometry-exemplar", "point", "box", "mask", "none"]
+          }
+        },
+        "capabilities": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "exclusions": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": { "type": "string", "minLength": 1 }
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": { "classification": { "const": "internal-fixture" } }
+          },
+          "then": {
+            "properties": {
+              "lifecycle": { "const": "test-only" },
+              "dispatch_role": { "const": "not-applicable" }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": { "classification": { "const": "internal-component" } }
+          },
+          "then": {
+            "properties": {
+              "lifecycle": { "enum": ["candidate", "planned", "test-only", "deprecated"] },
+              "dispatch_role": { "const": "not-applicable" }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": { "classification": { "const": "legacy-shipped" } }
+          },
+          "then": {
+            "properties": {
+              "lifecycle": { "const": "shipped" },
+              "dispatch_role": { "const": "legacy" }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": { "classification": { "const": "public-deployment" } }
+          },
+          "then": {
+            "properties": {
+              "lifecycle": { "enum": ["shipped", "candidate", "planned", "deprecated"] },
+              "dispatch_role": { "enum": ["default", "optional", "fallback", "not-applicable"] }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "classification": { "const": "public-deployment" },
+              "lifecycle": { "const": "shipped" }
+            },
+            "required": ["classification", "lifecycle"]
+          },
+          "then": {
+            "properties": {
+              "dispatch_role": { "enum": ["default", "optional", "fallback"] }
+            }
+          }
+        }
+      ]
+    },
+    "plan": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "contract_version",
+        "semantic_graph_kind",
+        "role_set",
+        "components"
+      ],
+      "properties": {
+        "id": { "$ref": "#/$defs/id" },
+        "contract_version": { "$ref": "#/$defs/version" },
+        "semantic_graph_kind": { "type": "string", "minLength": 1 },
+        "role_set": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "components": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "model": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "family",
+        "variant",
+        "vision_layout",
+        "tracking_layout",
+        "source_repository",
+        "source_commit",
+        "model_revision",
+        "checkpoint",
+        "variant_parameters"
+      ],
+      "properties": {
+        "family": { "enum": ["sam3", "sam3.1", "synthetic"] },
+        "variant": { "type": "string", "minLength": 1 },
+        "vision_layout": { "type": "string", "minLength": 1 },
+        "tracking_layout": { "type": "string", "minLength": 1 },
+        "source_repository": { "type": "string", "minLength": 1 },
+        "source_commit": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+        "model_revision": { "type": "string", "minLength": 1 },
+        "checkpoint": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["id", "digest"],
+          "properties": {
+            "id": { "type": "string", "minLength": 1 },
+            "digest": { "$ref": "#/$defs/digest" }
+          }
+        },
+        "variant_parameters": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["name", "value"],
+            "properties": {
+              "name": { "type": "string", "minLength": 1 },
+              "value": { "$ref": "#/$defs/json_value" }
+            }
+          }
+        }
+      }
+    },
+    "backend": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "target",
+        "execution_provider",
+        "runtime_version",
+        "pytorch_version",
+        "exporter_version",
+        "opset",
+        "capabilities"
+      ],
+      "properties": {
+        "kind": { "enum": ["onnx-runtime", "aotinductor", "synthetic"] },
+        "target": { "type": "string", "minLength": 1 },
+        "execution_provider": { "type": "string", "minLength": 1 },
+        "runtime_version": { "type": "string", "minLength": 1 },
+        "pytorch_version": { "type": "string", "minLength": 1 },
+        "exporter_version": { "type": "string", "minLength": 1 },
+        "opset": { "type": ["integer", "null"], "minimum": 1 },
+        "capabilities": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "enum": [
+              "device-resident-handoff",
+              "iobinding",
+              "external-data",
+              "bounded-dynamic-shapes",
+              "graph-internal-topk"
+            ]
+          }
+        }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "kind": { "const": "onnx-runtime" } } },
+          "then": { "properties": { "opset": { "type": "integer", "minimum": 1 } } },
+          "else": { "properties": { "opset": { "type": "null" } } }
+        }
+      ]
+    },
+    "profile": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "precision", "shape_mode", "static_values", "dynamic_dimensions"],
+      "properties": {
+        "id": { "$ref": "#/$defs/id" },
+        "precision": { "enum": ["fp32", "fp16", "bf16", "mixed", "synthetic"] },
+        "shape_mode": { "enum": ["static", "bounded-dynamic"] },
+        "static_values": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["name", "value"],
+            "properties": {
+              "name": { "type": "string", "minLength": 1 },
+              "value": { "$ref": "#/$defs/json_value" }
+            }
+          }
+        },
+        "dynamic_dimensions": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/dynamic_dimension" }
+        }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "shape_mode": { "const": "static" } } },
+          "then": { "properties": { "dynamic_dimensions": { "maxItems": 0 } } }
+        },
+        {
+          "if": { "properties": { "shape_mode": { "const": "bounded-dynamic" } } },
+          "then": { "properties": { "dynamic_dimensions": { "minItems": 1 } } }
+        }
+      ]
+    },
+    "dynamic_dimension": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["symbol", "minimum", "optimum", "maximum"],
+      "properties": {
+        "symbol": { "type": "string", "pattern": "^[A-Z][A-Z0-9_]*$" },
+        "minimum": { "type": "integer", "minimum": 1 },
+        "optimum": { "type": "integer", "minimum": 1 },
+        "maximum": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "tensor": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "semantic_type",
+        "dtype",
+        "shape",
+        "layout",
+        "unit",
+        "normalization",
+        "padding",
+        "validity",
+        "coordinates",
+        "value_kind",
+        "residency"
+      ],
+      "properties": {
+        "id": { "$ref": "#/$defs/id" },
+        "semantic_type": { "type": "string", "minLength": 1 },
+        "dtype": {
+          "enum": ["float32", "float16", "bfloat16", "int64", "int32", "bool"]
+        },
+        "shape": {
+          "type": "array",
+          "items": {
+            "oneOf": [
+              { "type": "integer", "minimum": 0 },
+              { "type": "string", "pattern": "^[A-Z][A-Z0-9_]*$" }
+            ]
+          }
+        },
+        "layout": { "type": "string", "minLength": 1 },
+        "unit": { "type": "string", "minLength": 1 },
+        "normalization": { "type": "string", "minLength": 1 },
+        "padding": { "type": "string", "minLength": 1 },
+        "validity": { "type": "string", "minLength": 1 },
+        "coordinates": { "type": "string", "minLength": 1 },
+        "value_kind": { "type": "string", "minLength": 1 },
+        "residency": {
+          "enum": ["host-input", "device", "device-preferred", "host-output"]
+        }
+      }
+    },
+    "binding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["tensor_ref", "backend_name"],
+      "properties": {
+        "tensor_ref": { "$ref": "#/$defs/id" },
+        "backend_name": { "type": "string", "minLength": 1 }
+      }
+    },
+    "artifact": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "role",
+        "format",
+        "components",
+        "entry_file_ref",
+        "external_data_file_refs",
+        "inputs",
+        "outputs"
+      ],
+      "properties": {
+        "id": { "$ref": "#/$defs/id" },
+        "role": { "type": "string", "minLength": 1 },
+        "format": { "enum": ["onnx", "exported-program", "aotinductor", "synthetic"] },
+        "components": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "entry_file_ref": { "$ref": "#/$defs/id" },
+        "external_data_file_refs": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/id" }
+        },
+        "inputs": { "type": "array", "items": { "$ref": "#/$defs/binding" } },
+        "outputs": { "type": "array", "items": { "$ref": "#/$defs/binding" } }
+      }
+    },
+    "execution": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["entry_artifacts", "edges"],
+      "properties": {
+        "entry_artifacts": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/id" }
+        },
+        "edges": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["producer_artifact_ref", "consumer_artifact_ref", "tensor_refs"],
+            "properties": {
+              "producer_artifact_ref": { "$ref": "#/$defs/id" },
+              "consumer_artifact_ref": { "$ref": "#/$defs/id" },
+              "tensor_refs": {
+                "type": "array",
+                "minItems": 1,
+                "uniqueItems": true,
+                "items": { "$ref": "#/$defs/id" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "cache": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "tensor_refs",
+        "lifetime",
+        "key_version",
+        "key_parts",
+        "invalidated_by",
+        "state_compatibility"
+      ],
+      "properties": {
+        "id": { "$ref": "#/$defs/id" },
+        "tensor_refs": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/id" }
+        },
+        "lifetime": {
+          "enum": [
+            "request",
+            "image-session",
+            "prompt-session",
+            "frame",
+            "object",
+            "session",
+            "persistent"
+          ]
+        },
+        "key_version": { "$ref": "#/$defs/version" },
+        "key_parts": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "invalidated_by": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "state_compatibility": { "type": "string", "minLength": 1 }
+      }
+    },
+    "handoff": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "producer_artifact_ref",
+        "consumer_artifact_ref",
+        "tensor_refs",
+        "requirement",
+        "mechanism",
+        "fallback_plan_id"
+      ],
+      "properties": {
+        "id": { "$ref": "#/$defs/id" },
+        "producer_artifact_ref": { "$ref": "#/$defs/id" },
+        "consumer_artifact_ref": { "$ref": "#/$defs/id" },
+        "tensor_refs": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/id" }
+        },
+        "requirement": { "enum": ["required-device", "preferred-device", "host-allowed"] },
+        "mechanism": { "type": "string", "minLength": 1 },
+        "fallback_plan_id": { "type": ["string", "null"], "minLength": 1 }
+      }
+    },
+    "capture": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "canonical_format",
+        "mode",
+        "pytorch_version",
+        "exporter_version",
+        "constraints",
+        "graph_signature_file_ref",
+        "strict_audit"
+      ],
+      "properties": {
+        "canonical_format": { "enum": ["exported-program", "synthetic"] },
+        "mode": { "enum": ["strict", "non-strict", "synthetic"] },
+        "pytorch_version": { "type": "string", "minLength": 1 },
+        "exporter_version": { "type": "string", "minLength": 1 },
+        "constraints": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "graph_signature_file_ref": { "$ref": "#/$defs/id" },
+        "strict_audit": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["status", "report_file_ref"],
+          "properties": {
+            "status": { "enum": ["pass", "fail", "not-run"] },
+            "report_file_ref": { "type": ["string", "null"], "minLength": 1 }
+          },
+          "allOf": [
+            {
+              "if": { "properties": { "status": { "const": "not-run" } } },
+              "then": { "properties": { "report_file_ref": { "type": "null" } } },
+              "else": { "properties": { "report_file_ref": { "$ref": "#/$defs/id" } } }
+            }
+          ]
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": { "canonical_format": { "const": "exported-program" } }
+          },
+          "then": {
+            "properties": { "mode": { "enum": ["strict", "non-strict"] } }
+          },
+          "else": {
+            "properties": { "mode": { "const": "synthetic" } }
+          }
+        }
+      ]
+    },
+    "policy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "binding", "value", "stage"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "binding": { "enum": ["baked", "host-runtime"] },
+        "value": { "$ref": "#/$defs/json_value" },
+        "stage": { "type": "string", "minLength": 1 }
+      }
+    },
+    "fixture": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "version",
+        "owner",
+        "source_commit",
+        "checkpoint_digest",
+        "cases",
+        "aggregate_digest",
+        "parity"
+      ],
+      "properties": {
+        "id": { "$ref": "#/$defs/id" },
+        "version": { "$ref": "#/$defs/version" },
+        "owner": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["team", "role"],
+          "properties": {
+            "team": { "type": "string", "minLength": 1 },
+            "role": { "type": "string", "minLength": 1 }
+          }
+        },
+        "source_commit": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+        "checkpoint_digest": { "$ref": "#/$defs/digest" },
+        "cases": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "aggregate_digest": { "$ref": "#/$defs/digest" },
+        "parity": {
+          "type": "array",
+          "minItems": 4,
+          "maxItems": 4,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["stage", "status", "report_file_ref"],
+            "properties": {
+              "stage": {
+                "enum": [
+                  "official-to-local-eager",
+                  "local-eager-to-exported-program",
+                  "exported-program-to-backend",
+                  "end-to-end-behavior"
+                ]
+              },
+              "status": { "enum": ["pass", "fail", "not-run"] },
+              "report_file_ref": { "type": ["string", "null"], "minLength": 1 }
+            },
+            "allOf": [
+              {
+                "if": { "properties": { "status": { "const": "not-run" } } },
+                "then": { "properties": { "report_file_ref": { "type": "null" } } },
+                "else": { "properties": { "report_file_ref": { "$ref": "#/$defs/id" } } }
+              }
+            ]
+          },
+          "allOf": [
+            {
+              "contains": {
+                "properties": { "stage": { "const": "official-to-local-eager" } },
+                "required": ["stage"]
+              },
+              "minContains": 1,
+              "maxContains": 1
+            },
+            {
+              "contains": {
+                "properties": { "stage": { "const": "local-eager-to-exported-program" } },
+                "required": ["stage"]
+              },
+              "minContains": 1,
+              "maxContains": 1
+            },
+            {
+              "contains": {
+                "properties": { "stage": { "const": "exported-program-to-backend" } },
+                "required": ["stage"]
+              },
+              "minContains": 1,
+              "maxContains": 1
+            },
+            {
+              "contains": {
+                "properties": { "stage": { "const": "end-to-end-behavior" } },
+                "required": ["stage"]
+              },
+              "minContains": 1,
+              "maxContains": 1
+            }
+          ]
+        }
+      }
+    },
+    "file": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "path", "role", "size_bytes", "digest"],
+      "properties": {
+        "id": { "$ref": "#/$defs/id" },
+        "path": {
+          "type": "string",
+          "pattern": "^(?!/)(?!.*(?:^|/)(?:\\.|\\.\\.)(?:/|$))(?!.*//)[A-Za-z0-9](?:[A-Za-z0-9._/-]*[A-Za-z0-9._-])?$"
+        },
+        "role": {
+          "enum": [
+            "graph",
+            "external-data",
+            "capture",
+            "graph-signature",
+            "tokenizer",
+            "fixture",
+            "parity-report",
+            "export-report"
+          ]
+        },
+        "size_bytes": { "type": "integer", "minimum": 0 },
+        "digest": { "$ref": "#/$defs/digest" }
+      }
+    },
+    "json_value": {
+      "oneOf": [
+        { "type": "string" },
+        { "type": "number" },
+        { "type": "boolean" },
+        { "type": "null" },
+        {
+          "type": "array",
+          "items": {
+            "oneOf": [
+              { "type": "string" },
+              { "type": "number" },
+              { "type": "boolean" },
+              { "type": "null" }
+            ]
+          }
+        }
+      ]
+    }
+  }
+}

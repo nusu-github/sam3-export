@@ -1,69 +1,62 @@
-# Public export cuts
+# Public deployment artifact catalog
 
-This document is the public tensor-I/O map for `sam3.export`. It describes
-what each wrapper owns, what can be cached, and what stays in the host runtime.
-Implementation details and model construction live in the Python modules named
-below.
+This document is the short public tensor-I/O catalog for shipped deployment
+artifacts. It is deliberately not a list of every module under `sam3.export`.
+Logical components and test-only wrappers are cataloged separately in
+[INTERNAL_COMPONENTS.md](INTERNAL_COMPONENTS.md); plan composition and backend
+dispatch live in [DEPLOYMENT_PLANS.md](DEPLOYMENT_PLANS.md).
 
-## Conventions
+The terms in this document follow [GLOSSARY.md](GLOSSARY.md). In particular, a
+logical component is not automatically a separately distributed artifact.
 
-- One exported artifact has static shapes. `B=1` is the baseline; batching and
-  dynamic dimensions are separate compatibility work.
-- A boolean `*_mask` follows PyTorch key-padding convention unless noted:
-  `True` means the token is ignored.
-- Image preprocessing and conversion back to the original image size are host
-  work. The production vision contract uses a fixed square image.
-- `VisionTowerFlat` returns tensors in the order defined by
-  `sam3.export.contracts.flat_vision_keys` so runtimes do not need Python
-  dataclasses.
+## Shipped deployment bundles
 
-## Cut catalog
+### SAM3 text-only image PCS / legacy split v1
 
-| Cut | Public module | Tensor contract | Cache / host boundary |
-|---|---|---|---|
-| Vision | `VisionTower`, `VisionTowerFlat` | `pixel_values[B,3,S,S]` → SAM3 FPN/PE and optional SAM2 FPN/PE levels | Cache per image or frame. Use `VisionTowerFlat` for an exported tensor tuple; `VisionTower` is the eager named output. |
-| Text | `TextTower` | `input_ids[B,L]`, `attention_mask[B,L]` → `text_memory[B,L,D]`, `text_padding_mask[B,L]` | Cache per tokenized prompt. Its input mask is the tokenizer convention (`True` = valid); its output mask is key-padding convention. Tokenization is host work. |
-| Interactive image view | `InteractiveImageEmbed` | Four cached SAM2 FPN levels → `image_embed`, `high_res_0`, `high_res_1` | Reuses VisionTower output. It applies the tracker mask-head high-resolution projections and initial-frame embedding; temporal scheduling is host work. |
-| Point prompt | `PromptEncode` | Fixed `point_coords[B,N,2]`, `point_labels[B,N]` → sparse and dense prompt embeddings | The shipped wrapper is the fixed-point contract used by its tests. Point padding / UI policy is host work. |
-| Interactive mask | `InteractiveDecode` | Fixed image embedding plus fixed point coordinates and labels → multimask logits and IoU | A self-contained tiny SAM-head export. It encodes its input points internally; consumers that need direct sparse/dense-prompt decoding must provide a separate wrapper. |
-| Grounding encoder | `GroundingEncode` | Static tuples of image features, PEs, and image masks plus batch-first text memory/mask → memory, PE, padding mask, level metadata, text memory | Cache output while the image features and text prompt remain unchanged. |
-| Grounding decoder | `GroundingDecode` | Image feature tuple plus `GroundingEncode` outputs → fixed-query logits, `cxcywh` boxes, masks, and presence scores | Thresholding, coordinate conversion, and NMS are host work. |
-| Mask memory | `MemoryEncode` | Image features and a predicted mask → mask-memory features and positional encoding | Cache one result per selected tracker memory slot. The default wrapper treats masks as logits. |
-| Tracker step | `TrackerStep` | Current image embedding/PE, high-res features, padded spatial memory, padded object-pointer memory, and fixed points → low/high-res mask logits, object token, object score | Runs one object on one frame. The host selects slots, constructs temporal positions, appends `MemoryEncode` output, and owns frame/object loops. |
-
-## Composition
-
-```
-pixels ── VisionTowerFlat ──┬── SAM3 features ── GroundingEncode ── GroundingDecode
-                            │                       ▲
-token ids ── TextTower ────┘                       │
-                                                    │
-SAM2 features ── InteractiveImageEmbed ── TrackerStep ── MemoryEncode
-```
-
-`PromptEncode` and `InteractiveDecode` are independent interactive cuts. The
-current `InteractiveDecode` is intentionally self-contained; it does not take
-the output tuple of `PromptEncode`.
-
-## Static-shape policy
-
-| Value | Contract choice |
+| Property | Contract |
 |---|---|
-| Image side | Fixed for an artifact; the production vision contract is 1008×1008. |
-| Text length | Fixed `L` with padding mask. |
-| Point count | Fixed `N` with padding labels. |
-| Detector queries | Fixed by the decoder weights. |
-| Tracker spatial-memory slots | Fixed `M`; padded slots use the memory padding mask. |
-| Tracker object-pointer slots | Fixed `P`; padded slots use the object padding mask. |
+| Status | Shipped legacy bundle; supported for its documented scope, but not the default recipe for manifest v2 |
+| Model family | SAM3 base (`facebook/sam3`) |
+| Capability | Text-only image promptable concept segmentation (PCS) |
+| Excluded capabilities | Geometry/exemplar prompts, semantic output, production interactive PVS, video tracking, SAM3.1 Tri neck and Multiplex |
+| Backend/profile | ONNX Runtime CUDA EP with IOBinding; batch 1, fp16, 1008x1008 image, text length 32 |
+| Package manifest | `artifacts/sam3-onnx/manifest.json`, format `sam3-split-onnx-v1` |
+| Host boundary | Decode/resize, tokenization, thresholding, selection/NMS, output resize and rendering |
+| Device handoff | Intermediate outputs must remain CUDA `OrtValue`s for the documented GPU path |
 
-## Runtime checklist
+The bundle contains four graph files. They are legacy split stages, not four
+independent product capabilities.
 
-1. Preprocess pixels and tokenize text outside exported programs.
-2. Cache VisionTower and TextTower outputs under application-owned keys.
-3. Invoke only the downstream cut affected by a prompt, object, or frame
-   change.
-4. Apply selection, association, cache policy, and display-space conversion in
-   the host runtime.
+| File | Tensor contract | Cache / host boundary |
+|---|---|---|
+| `vision_encoder.onnx` | `pixel_values[1,3,1008,1008]` fp16 -> three detector FPN features and three positional tensors | Cache per normalized image. The legacy ABI exposes positional outputs that M1 will evaluate for pruning. |
+| `text_encoder.onnx` | `input_ids[1,32]` int64, tokenizer-valid `attention_mask[1,32]` bool -> `text_memory[1,32,256]`, key-padding `text_padding_mask[1,32]` | Cache by text, tokenizer revision and model revision. |
+| `grounding_encoder.onnx` | Low-resolution image feature/position/mask plus text memory/mask -> fusion memory and fixed level metadata | Legacy split boundary only. No host policy runs at this boundary. |
+| `grounding_decoder.onnx` | Three image features plus grounding-encoder continuation -> 200 query logits, normalized `cxcywh` boxes, 200 mask logits and presence logits | Final tensors may cross to host for thresholding, selection, resize and rendering. |
 
-Run `PYTHONPATH=src python scripts/export_smoke.py` to verify eager/export
-round trips for the shipped public cuts.
+The exact legacy tensor names, dtypes and shapes remain machine-readable in the
+v1 manifest. The manifest does not describe a deployment plan, cache keys,
+capture metadata, file hashes or external-data files; those are requirements
+of the draft v2 contract rather than retroactive claims about v1.
+
+## Planned artifacts are not shipped artifacts
+
+M1 will compare a fused `GroundingFull`, vision-output pruning and an optional
+selected-K recipe. Until the corresponding decision records are approved and
+M2 release gates pass, those names appear only as proposed plans in
+[DEPLOYMENT_PLANS.md](DEPLOYMENT_PLANS.md), never as shipped entries here.
+
+## Catalog admission rule
+
+A new entry is added only when all of the following are true:
+
+1. its deployment plan and applicable backend/profile are approved;
+2. its public semantic tensor contract and Host Runtime boundary are stable;
+3. its plan manifest validates against the release schema;
+4. official eager -> local eager -> `ExportedProgram` -> backend parity and
+   end-to-end behavior are recorded against owned fixtures;
+5. artifact and external-data hashes are available; and
+6. default, optional or fallback status is explicit.
+
+Internal export smoke coverage alone does not admit a component to this
+catalog.

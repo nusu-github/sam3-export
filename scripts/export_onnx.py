@@ -1,9 +1,9 @@
-"""Export and validate the deployable split ONNX graphs for ``facebook/sam3``.
+"""Export and validate the legacy split ONNX bundle for ``facebook/sam3``.
 
-The exported pipeline deliberately keeps image preprocessing, BPE tokenization,
-score thresholding, NMS, and display-space conversion in the host runtime.  Its
-four graphs have fixed batch size one, a 1008x1008 input image, and a 32-token
-text prompt:
+The bundle implements SAM3 text-only image PCS / legacy split v1. Image
+preprocessing, BPE tokenization, score thresholding, selection, optional NMS,
+and display-space conversion stay in the Host Runtime. Its four graphs have
+fixed batch size one, a 1008x1008 input image, and a 32-token text prompt:
 
 ``vision_encoder -> text_encoder -> grounding_encoder -> grounding_decoder``.
 
@@ -167,12 +167,13 @@ tags:
 - image-segmentation
 ---
 
-# SAM 3 split ONNX
+# SAM3 text-only image PCS / legacy split v1
 
-This repository contains a validated, fixed-shape ONNX export of the public
-[`facebook/sam3`](https://huggingface.co/facebook/sam3) checkpoint.
+This repository contains the shipped legacy fixed-shape ONNX bundle derived
+from the public [`facebook/sam3`](https://huggingface.co/facebook/sam3)
+checkpoint. Its exact scope is **SAM3 text-only image PCS / legacy split v1**.
 
-The model is intentionally split into four tensors-only stages:
+The legacy bundle consists of four tensor-only stages:
 
 ```text
 pixels -> vision_encoder.onnx -----> grounding_encoder.onnx -> grounding_decoder.onnx
@@ -185,6 +186,13 @@ dtypes, and shapes. The accompanying Space runs these four ONNX files with
 ONNX Runtime CUDA Execution Provider and IOBinding on ZeroGPU, so intermediate
 vision, text, and grounding tensors remain CUDA `OrtValue`s between graphs.
 
+This package does not provide geometry/exemplar prompts, semantic output,
+production interactive PVS, video tracking, or SAM3.1 Tri neck/Multiplex. The
+four-stage boundary is a supported legacy recipe and an M1 comparison baseline,
+not a declaration of the future default deployment cut. The v1 manifest is the
+source of truth only for its recorded filenames and tensor names/dtypes/shapes;
+it does not contain v2 plan, cache, capture, fixture or file-integrity metadata.
+
 ## Runtime responsibilities
 
 The host must resize/normalize images to `(x / 255 - 0.5) / 0.5`, BPE-tokenize
@@ -193,6 +201,8 @@ set `text_padding_mask = input_ids == 0`. It must also apply score thresholds,
 NMS if desired, and resize predicted masks to the original image dimensions.
 For GPU inference, bind every stage output to CUDA and feed it to the next
 stage as an `OrtValue`; copy only final decoder outputs to CPU for rendering.
+The accompanying demo thresholds all 200 query outputs, sorts them by score,
+and renders at most 25; it does not run NMS.
 
 ## License and attribution
 

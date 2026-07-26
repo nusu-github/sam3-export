@@ -1,4 +1,4 @@
-"""Run the CUDA ``torch.export`` round-trip gate for every public cut."""
+"""Run CUDA ``torch.export`` round trips for internal components and fixtures."""
 
 from __future__ import annotations
 

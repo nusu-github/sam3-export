@@ -1,4 +1,4 @@
-"""CUDA export parity for the remaining B/C/F/G/H/I deployment cuts."""
+"""CUDA export parity for internal B/C/F/G/H/I component fixtures."""
 
 from __future__ import annotations
 

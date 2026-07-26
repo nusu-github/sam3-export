@@ -1,0 +1,260 @@
+{
+  "format": "sam3-deployment-manifest-v2",
+  "manifest_id": "sam3-manifest-schema-fixture-v2",
+  "scope": {
+    "classification": "internal-fixture",
+    "lifecycle": "test-only",
+    "dispatch_role": "not-applicable",
+    "scope_label": "Synthetic manifest v2 schema validation fixture",
+    "use_case": "schema-validation",
+    "prompt_coverage": ["none"],
+    "capabilities": ["synthetic two-stage tensor flow"],
+    "exclusions": ["model correctness", "performance", "release eligibility"]
+  },
+  "plan": {
+    "id": "synthetic-schema-validation-v1",
+    "contract_version": "1.0.0",
+    "semantic_graph_kind": "synthetic-two-stage",
+    "role_set": ["schema-validation"],
+    "components": ["SyntheticEncode", "SyntheticDecode"]
+  },
+  "model": {
+    "family": "synthetic",
+    "variant": "schema-fixture",
+    "vision_layout": "synthetic",
+    "tracking_layout": "none",
+    "source_repository": "local-schema-fixture",
+    "source_commit": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "model_revision": "fixture-v1",
+    "checkpoint": {
+      "id": "synthetic-checkpoint",
+      "digest": {
+        "algorithm": "sha256",
+        "value": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+      }
+    },
+    "variant_parameters": [
+      { "name": "synthetic-width", "value": 4 }
+    ]
+  },
+  "backend": {
+    "kind": "synthetic",
+    "target": "test-device",
+    "execution_provider": "SyntheticExecutionProvider",
+    "runtime_version": "1.0",
+    "pytorch_version": "2.0",
+    "exporter_version": "1.0",
+    "opset": null,
+    "capabilities": ["device-resident-handoff", "external-data"]
+  },
+  "profile": {
+    "id": "synthetic-b1-fp16",
+    "precision": "synthetic",
+    "shape_mode": "static",
+    "static_values": [
+      { "name": "batch", "value": 1 },
+      { "name": "width", "value": 4 }
+    ],
+    "dynamic_dimensions": []
+  },
+  "tensors": [
+    {
+      "id": "input-values",
+      "semantic_type": "SyntheticInputV1",
+      "dtype": "float16",
+      "shape": [1, 4],
+      "layout": "BD",
+      "unit": "unitless",
+      "normalization": "none",
+      "padding": "none",
+      "validity": "all values valid",
+      "coordinates": "not-applicable",
+      "value_kind": "feature",
+      "residency": "host-input"
+    },
+    {
+      "id": "encoded-values",
+      "semantic_type": "SyntheticEncodedV1",
+      "dtype": "float16",
+      "shape": [1, 4],
+      "layout": "BD",
+      "unit": "unitless",
+      "normalization": "none",
+      "padding": "none",
+      "validity": "all values valid",
+      "coordinates": "not-applicable",
+      "value_kind": "feature",
+      "residency": "device"
+    },
+    {
+      "id": "output-values",
+      "semantic_type": "SyntheticOutputV1",
+      "dtype": "float16",
+      "shape": [1, 1],
+      "layout": "BD",
+      "unit": "unitless",
+      "normalization": "none",
+      "padding": "none",
+      "validity": "all values valid",
+      "coordinates": "not-applicable",
+      "value_kind": "score-logit",
+      "residency": "host-output"
+    }
+  ],
+  "artifacts": [
+    {
+      "id": "synthetic-encoder",
+      "role": "feature-encoder",
+      "format": "synthetic",
+      "components": ["SyntheticEncode"],
+      "entry_file_ref": "encoder-graph",
+      "external_data_file_refs": ["encoder-external-data"],
+      "inputs": [
+        { "tensor_ref": "input-values", "backend_name": "input_values" }
+      ],
+      "outputs": [
+        { "tensor_ref": "encoded-values", "backend_name": "encoded_values" }
+      ]
+    },
+    {
+      "id": "synthetic-decoder",
+      "role": "result-decoder",
+      "format": "synthetic",
+      "components": ["SyntheticDecode"],
+      "entry_file_ref": "decoder-graph",
+      "external_data_file_refs": [],
+      "inputs": [
+        { "tensor_ref": "encoded-values", "backend_name": "encoded_values" }
+      ],
+      "outputs": [
+        { "tensor_ref": "output-values", "backend_name": "output_values" }
+      ]
+    }
+  ],
+  "execution": {
+    "entry_artifacts": ["synthetic-encoder"],
+    "edges": [
+      {
+        "producer_artifact_ref": "synthetic-encoder",
+        "consumer_artifact_ref": "synthetic-decoder",
+        "tensor_refs": ["encoded-values"]
+      }
+    ]
+  },
+  "caches": [
+    {
+      "id": "synthetic-feature-cache",
+      "tensor_refs": ["encoded-values"],
+      "lifetime": "image-session",
+      "key_version": "1.0.0",
+      "key_parts": ["input-digest", "model-revision", "profile-id"],
+      "invalidated_by": ["input-change", "model-change", "profile-change"],
+      "state_compatibility": "SyntheticEncodedV1 and matching profile"
+    }
+  ],
+  "handoffs": [
+    {
+      "id": "encoder-to-decoder",
+      "producer_artifact_ref": "synthetic-encoder",
+      "consumer_artifact_ref": "synthetic-decoder",
+      "tensor_refs": ["encoded-values"],
+      "requirement": "required-device",
+      "mechanism": "synthetic-device-value",
+      "fallback_plan_id": "synthetic-fused-fallback-v1"
+    }
+  ],
+  "capture": {
+    "canonical_format": "synthetic",
+    "mode": "synthetic",
+    "pytorch_version": "2.0",
+    "exporter_version": "1.0",
+    "constraints": [],
+    "graph_signature_file_ref": "graph-signature",
+    "strict_audit": {
+      "status": "not-run",
+      "report_file_ref": null
+    }
+  },
+  "policies": [
+    {
+      "name": "output-policy",
+      "binding": "baked",
+      "value": "synthetic-score-logit",
+      "stage": "synthetic-decoder"
+    },
+    {
+      "name": "selection-policy",
+      "binding": "host-runtime",
+      "value": "none",
+      "stage": "public-result"
+    }
+  ],
+  "fixtures": [
+    {
+      "id": "synthetic-manifest-fixture",
+      "version": "1.0.0",
+      "owner": {
+        "team": "sam3-export",
+        "role": "schema-test-owner"
+      },
+      "source_commit": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "checkpoint_digest": {
+        "algorithm": "sha256",
+        "value": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+      },
+      "cases": ["structurally-valid-static-two-stage-plan"],
+      "aggregate_digest": {
+        "algorithm": "sha256",
+        "value": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+      },
+      "parity": [
+        { "stage": "official-to-local-eager", "status": "not-run", "report_file_ref": null },
+        { "stage": "local-eager-to-exported-program", "status": "not-run", "report_file_ref": null },
+        { "stage": "exported-program-to-backend", "status": "not-run", "report_file_ref": null },
+        { "stage": "end-to-end-behavior", "status": "not-run", "report_file_ref": null }
+      ]
+    }
+  ],
+  "files": [
+    {
+      "id": "encoder-graph",
+      "path": "graphs/encoder.synthetic",
+      "role": "graph",
+      "size_bytes": 16,
+      "digest": {
+        "algorithm": "sha256",
+        "value": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+      }
+    },
+    {
+      "id": "encoder-external-data",
+      "path": "graphs/encoder.synthetic.data",
+      "role": "external-data",
+      "size_bytes": 32,
+      "digest": {
+        "algorithm": "sha256",
+        "value": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+      }
+    },
+    {
+      "id": "decoder-graph",
+      "path": "graphs/decoder.synthetic",
+      "role": "graph",
+      "size_bytes": 16,
+      "digest": {
+        "algorithm": "sha256",
+        "value": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+      }
+    },
+    {
+      "id": "graph-signature",
+      "path": "capture/graph-signature.json",
+      "role": "graph-signature",
+      "size_bytes": 64,
+      "digest": {
+        "algorithm": "sha256",
+        "value": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+      }
+    }
+  ]
+}

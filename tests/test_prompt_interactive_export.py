@@ -1,4 +1,4 @@
-"""Cut D/E: PromptEncode + InteractiveDecode torch.export tests (shipped modules)."""
+"""Cut D/E: test-only PromptEncode and InteractiveDecode export fixtures."""
 
 from __future__ import annotations
 

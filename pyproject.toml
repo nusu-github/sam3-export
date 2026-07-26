@@ -24,6 +24,7 @@ dependencies = [
 
 [project.optional-dependencies]
 test = [
+  "jsonschema==4.25.1",
   "pytest==9.1.1",
 ]
 
@@ -35,6 +36,7 @@ typecheck = [
   "pyrefly==1.1.1",
 ]
 test = [
+  "jsonschema==4.25.1",
   "pytest==9.1.1",
 ]
 dev = [

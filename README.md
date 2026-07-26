@@ -1,16 +1,18 @@
 # sam3
 
 `sam3` is an export-oriented SAM3 implementation. The package name is
-historical: the supported inference path is standard PyTorch/ATen and is
-designed to be captured as small `torch.export` graphs.
+historical: its tensor components use standard PyTorch/ATen and are designed
+for `torch.export` capture and composition into deployment plans.
 
-The project deliberately separates reusable tensor graphs from host-side
-orchestration. Vision, text, prompt, and single-step tracking components are
-the export-facing surface; tokenization, NMS, association, and frame loops stay
-in the Python runtime.
+The project separates Public API, Host Runtime, canonical tensor components and
+deployment plans/artifacts. Python wrappers in `sam3.export` are an internal
+component surface, not a promise of one distributed graph per wrapper.
+Tokenization, NMS, association, cache policy and frame loops stay in the Host
+Runtime.
 
-See [the export policy](docs/EXPORT_POLICY.md) and
-[the export-cut design](docs/EXPORT_CUTS.md) for contracts and boundaries.
+See the [glossary](docs/GLOSSARY.md), [component policy](docs/EXPORT_POLICY.md),
+[public artifact catalog](docs/EXPORT_CUTS.md), and
+[deployment plans](docs/DEPLOYMENT_PLANS.md).
 
 ## Package layout
 
@@ -36,17 +38,19 @@ from sam3.tracking import Sam3Tracker
 from sam3.runtime import nms_masks
 ```
 
-## Export cuts
+## Internal export components
 
-The current public cuts use tensor-only inputs and outputs:
+The current Python wrappers use tensor-only inputs and outputs. They include
+components and test-only fixtures; consult the public artifact catalog before
+treating any wrapper as a supported deployment boundary.
 
 - `VisionTower` / `VisionTowerFlat`: image → SAM3/SAM2 multi-scale features.
 - `TextTower`: token ids and tokeniser attention mask → batch-first text memory.
-- `PromptEncode`: fixed-size point prompts → sparse and dense embeddings.
-- `InteractiveDecode`: image embeddings plus fixed-size points → masks and IoU.
+- `PromptEncode`: fixed-size tiny point fixture → sparse and dense embeddings.
+- `InteractiveDecode`: self-contained tiny interactive fixture → masks and IoU.
 - `InteractiveImageEmbed`: cached SAM2 FPN → image embedding plus high-res views.
-- `GroundingEncode` / `GroundingDecode`: cached image/text tensors → fixed-query
-  boxes, scores, and masks.
+- `GroundingEncode` / `GroundingDecode`: legacy split components and M1
+  fused-vs-split baseline → fixed-query boxes, scores, and masks.
 - `MemoryEncode` / `TrackerStep`: a predicted mask → tracker memory, and one
   fixed-shape tracker update. The runtime owns memory-bank selection and loops.
 
@@ -59,7 +63,7 @@ module = VisionTowerFlat(neck)
 # exported = torch.export.export(module, (pixel_values,))
 ```
 
-Run all fixed-shape CUDA export round trips with:
+Run the fixed-shape CUDA component/fixture round trips with:
 
 ```bash
 PYTHONPATH=src python scripts/export_smoke.py
@@ -70,6 +74,13 @@ Runtime postprocessing is not part of an exported graph:
 ```python
 from sam3.runtime import associate_det_trk, nms_masks
 ```
+
+The only currently shipped bundle is **SAM3 text-only image PCS / legacy split
+v1**, profiled for ONNX Runtime CUDA EP + IOBinding, fp16, batch 1, a
+1008x1008 image and text length 32. It does not cover geometry/exemplar prompts,
+production interactive PVS, video, semantic output or SAM3.1. M1 will decide
+the fused, pruned and optional selected-K recipes before a new default is
+published.
 
 ## Installation
 

@@ -1,4 +1,4 @@
-"""ZeroGPU demo for the validated split ONNX SAM 3 image pipeline."""
+"""ZeroGPU demo for SAM3 text-only image PCS / legacy split v1."""
 
 from __future__ import annotations
 
@@ -185,7 +185,7 @@ def _overlay(
 def segment(
     image: Image.Image, concept: str, threshold: float
 ) -> tuple[Image.Image, str]:
-    """Segment every matching object in an uploaded image using split SAM 3 ONNX graphs."""
+    """Segment text matches with the legacy split SAM3 image PCS bundle."""
     if image is None:
         raise gr.Error("Upload an image first.")
     if not concept or not concept.strip():
@@ -245,10 +245,11 @@ def segment(
     return result, summary
 
 
-with gr.Blocks(theme=gr.themes.Soft(), title="SAM 3 Split ONNX") as demo:
+with gr.Blocks(theme=gr.themes.Soft(), title="SAM3 Legacy Split ONNX") as demo:
     gr.Markdown(
-        "# SAM 3 · split ONNX\n"
-        "Four CUDA ONNX Runtime graphs on ZeroGPU, chained with device-resident IOBinding."
+        "# SAM3 text-only image PCS / legacy split v1\n"
+        "Four CUDA ONNX Runtime graphs on ZeroGPU, chained with device-resident "
+        "IOBinding. This demo renders at most 25 of 200 queries and does not run NMS."
     )
     with gr.Row():
         with gr.Column():

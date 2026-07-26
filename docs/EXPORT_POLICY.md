@@ -1,66 +1,60 @@
-# Export policy — `torch.export` gate
+# Export policy
 
-## Gate API (conceptual)
+`sam3.export` contains the deployable inference boundaries. A boundary is
+accepted only when it can be captured and re-executed with `torch.export` for
+its documented static input shapes.
 
 ```python
-import torch
 from torch.export import export
 
-ep = export(module, args, kwargs, dynamic_shapes=..., strict=False)
-# must re-execute:
-out = ep.module()(*args, **kwargs)
+program = export(module.eval(), args, strict=False)
+actual = program.module()(*args)
 ```
 
-If a candidate **model-internal** dependency or layer cannot pass this for
-the shapes we care about, it does not land on the default path.
+## Requirements for an exported cut
 
-## Modes
+| Concern | Requirement |
+|---|---|
+| Inputs and outputs | Tensors, or a fixed tuple of tensors, only. |
+| Shapes | Image side, sequence length, point count, query count, and memory-slot count are static for one artifact. |
+| Operations | Standard PyTorch / ATen operations with an export path. |
+| State | All state needed by `forward` is a registered parameter or buffer. |
+| Validation | Eager output and `ExportedProgram.module()` output match within the test tolerance. |
+| Coverage | The cut is included in `scripts/export_smoke.py`. |
 
-| Mode | Meaning |
-|------|---------|
-| **export / production default** | ATen-only style: `F.linear`, SDPA, `nn.LayerNorm` (or equivalent export-safe LN), real RoPE |
-| **runtime experiments** | Optional kernel experiments (Triton/bnb/custom CUDA) are not in the default path |
+Dynamic dimensions may be added to a cut only after its static contract and
+round-trip test are green.
 
-No backend-switch env var is required for default export paths.
+## Keep outside the graph
 
-## Subgraph checklist (before claiming “exportable”)
+The following are runtime responsibilities, not exported graph operations:
 
-- [ ] Pure `nn.Module.forward`, tensor in / tensor (or tuple of tensors) out
-- [ ] No `scipy` / numpy host algorithms inside `forward`
-- [ ] No required unregistered Triton or custom CUDA in model internals
-- [ ] No complex dtype on the path
-- [ ] Control flow is shape-static or uses `torch.cond` / explicit masks
-- [ ] Documented example `args` + optional `dynamic_shapes`
-- [ ] Parity test: eager vs `ep.module()` within tolerances
-- [ ] Listed in `scripts/export_smoke.py`
+- string tokenization and BPE;
+- image/video decoding, resizing, and original-image coordinate conversion;
+- score thresholds, NMS, connected components, and mask selection;
+- detection-to-track association and other combinatorial matching;
+- frame loops, object banks, cache eviction, and temporal-slot selection.
 
-## Runtime outside the graph
+The runtime may compose exported cuts freely, but it must pass tensors that
+match the selected artifact's fixed contract.
 
-These may use Python freely (still prefer no C++):
+## Dependency rule
 
-- BPE / string tokenization
-- `nms_masks`, connected components (until registered as export custom ops —
-  default: run after export)
-- `associate_det_trk` (Hungarian)
-- Video `init_state` / `propagate` orchestration
-- Multi-prompt product policy
+An import on a model path must be export-compatible. Packages used only by the
+runtime must remain outside `sam3.export` and module `forward` methods. In
+particular, an exported cut must not require custom CUDA/C++ extensions,
+Triton kernels, NumPy/SciPy algorithms, or Python values derived from tensor
+data to decide its execution path.
 
-## Dependency review template
+## Verification
 
-When adding a package or heavy import:
-
-```
-Name:
-Used in:  [export subgraph | runtime only | optional-research]
-torch.export status:  [proven | blocked | n/a]
-Fallback if blocked:
-```
-
-## Smoke
+Run the fixed-shape CUDA round-trip suite after changing any cut or a primitive
+used by a cut:
 
 ```bash
-cd /opt/sam3/sam3
 PYTHONPATH=src python scripts/export_smoke.py
-# or
-PYTHONPATH=src pytest tests/test_export_smoke.py -q
 ```
+
+Use the corresponding test file for faster iteration. The smoke suite covers
+the public wrappers; ordinary unit tests still cover the underlying model
+components and host runtime.

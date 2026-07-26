@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections import OrderedDict
 from typing import Any
 
 import numpy as np
@@ -46,26 +47,10 @@ class OrtCudaBaseVideoAdapter:
             record["id"]: plan.bundle_dir / record["path"]
             for record in plan.manifest["files"]
         }
-        self._sessions: dict[str, Any] = {}
-        for role in required:
-            artifact = self._artifacts[role]
-            session = ort.InferenceSession(
-                str(files[artifact["entry_file_ref"]]),
-                providers=["CUDAExecutionProvider"],
-            )
-            session.disable_fallback()
-            if "CUDAExecutionProvider" not in session.get_providers():
-                raise CapabilityError(f"CUDAExecutionProvider did not load for {role}")
-            declared_inputs = {item["backend_name"] for item in artifact["inputs"]}
-            declared_outputs = {item["backend_name"] for item in artifact["outputs"]}
-            actual_inputs = {item.name for item in session.get_inputs()}
-            actual_outputs = {item.name for item in session.get_outputs()}
-            if declared_inputs != actual_inputs or declared_outputs != actual_outputs:
-                raise CapabilityError(
-                    f"ORT binding mismatch for {role}: "
-                    f"inputs={sorted(actual_inputs)} outputs={sorted(actual_outputs)}"
-                )
-            self._sessions[role] = session
+        self._model_paths = {
+            role: files[self._artifacts[role]["entry_file_ref"]] for role in required
+        }
+        self._sessions: OrderedDict[str, Any] = OrderedDict()
 
         static = {
             str(item["name"]): item["value"]
@@ -88,10 +73,48 @@ class OrtCudaBaseVideoAdapter:
             "memory_encodes": 0,
             "memory_commits": 0,
             "session_launches": 0,
+            "session_loads": 0,
+            "session_evictions": 0,
             "d2h_bytes": 0,
             "h2d_bytes": 0,
             "d2d_pack_bytes": 0,
         }
+
+    def _session(self, role: str) -> Any:
+        existing = self._sessions.get(role)
+        if existing is not None:
+            self._sessions.move_to_end(role)
+            return existing
+        if self._sessions:
+            self._sessions.popitem(last=False)
+            self.counters["session_evictions"] += 1
+        options = self._ort.SessionOptions()
+        options.add_session_config_entry("session.disable_cpu_ep_fallback", "1")
+        session = self._ort.InferenceSession(
+            str(self._model_paths[role]),
+            sess_options=options,
+            providers=[
+                (
+                    "CUDAExecutionProvider",
+                    {"arena_extend_strategy": "kSameAsRequested"},
+                )
+            ],
+        )
+        if "CUDAExecutionProvider" not in session.get_providers():
+            raise CapabilityError(f"CUDAExecutionProvider did not load for {role}")
+        artifact = self._artifacts[role]
+        declared_inputs = {item["backend_name"] for item in artifact["inputs"]}
+        declared_outputs = {item["backend_name"] for item in artifact["outputs"]}
+        actual_inputs = {item.name for item in session.get_inputs()}
+        actual_outputs = {item.name for item in session.get_outputs()}
+        if declared_inputs != actual_inputs or declared_outputs != actual_outputs:
+            raise CapabilityError(
+                f"ORT binding mismatch for {role}: "
+                f"inputs={sorted(actual_inputs)} outputs={sorted(actual_outputs)}"
+            )
+        self._sessions[role] = session
+        self.counters["session_loads"] += 1
+        return session
 
     def _upload(self, value: np.ndarray) -> Any:
         contiguous = np.ascontiguousarray(value)
@@ -110,15 +133,23 @@ class OrtCudaBaseVideoAdapter:
 
     def _run(self, role: str, inputs: dict[str, Any]) -> dict[str, Any]:
         artifact = self._artifacts[role]
+        session = self._session(role)
         names = {
             item["tensor_ref"]: item["backend_name"] for item in artifact["inputs"]
         }
-        binding = self._sessions[role].io_binding()
+        binding = session.io_binding()
+        expected_types = {item.name: item.type for item in session.get_inputs()}
         for tensor_ref, value in inputs.items():
-            binding.bind_ortvalue_input(names[tensor_ref], value)
-        for output in self._sessions[role].get_outputs():
+            backend_name = names[tensor_ref]
+            if value.data_type() != expected_types[backend_name]:
+                raise CapabilityError(
+                    f"ORT dtype mismatch for {role}/{backend_name}: "
+                    f"actual={value.data_type()} expected={expected_types[backend_name]}"
+                )
+            binding.bind_ortvalue_input(backend_name, value)
+        for output in session.get_outputs():
             binding.bind_output(output.name, "cuda", 0)
-        self._sessions[role].run_with_iobinding(binding)
+        session.run_with_iobinding(binding)
         self.counters["session_launches"] += 1
         values = binding.get_outputs()
         if any(value.device_name() != "cuda" for value in values):
@@ -133,41 +164,51 @@ class OrtCudaBaseVideoAdapter:
         return host
 
     def _slice_device(self, value: Any, row: int) -> Any:
-        tensor = self._as_torch(value)[row : row + 1].contiguous()
+        tensor = self._as_torch(value)[row : row + 1].clone()
+        self.counters["d2d_pack_bytes"] += tensor.numel() * tensor.element_size()
+        return self._from_torch(tensor)
+
+    def _clone_device(self, value: Any) -> Any:
+        tensor = self._as_torch(value).clone()
         self.counters["d2d_pack_bytes"] += tensor.numel() * tensor.element_size()
         return self._from_torch(tensor)
 
     def encode_frame(self, values: np.ndarray) -> object:
         self.counters["frame_encodes"] += 1
-        return self._run(self._FRAME_ROLE, {"pixel-values": self._upload(values)})
+        outputs = self._run(self._FRAME_ROLE, {"pixel-values": self._upload(values)})
+        return {name: self._clone_device(value) for name, value in outputs.items()}
 
     def _repeat_frame(self, frame_cache: object) -> dict[str, Any]:
         if not isinstance(frame_cache, dict):
             raise TypeError("invalid M4 frame cache")
         result: dict[str, Any] = {}
-        for name in (
-            "frame-image-embedding",
-            "frame-image-position",
-            "frame-high-res-0",
-            "frame-high-res-1",
+        for source_name, target_name in (
+            ("frame-image-embedding", "batched-frame-image-embedding"),
+            ("frame-image-position", "batched-frame-image-position"),
+            ("frame-high-res-0", "batched-frame-high-res-0"),
+            ("frame-high-res-1", "batched-frame-high-res-1"),
         ):
-            source = self._as_torch(frame_cache[name])
+            source = self._as_torch(frame_cache[source_name])
             expanded = source.expand(self.batch_capacity, -1, -1, -1).contiguous()
             self.counters["d2d_pack_bytes"] += (
                 expanded.numel() * expanded.element_size()
             )
-            result[name] = self._from_torch(expanded)
+            result[target_name] = self._from_torch(expanded)
         return result
 
     def _pack_state(self, packed: PackedObjectState) -> dict[str, Any]:
         batch = self.batch_capacity
         memory = torch.zeros(
             (batch, 10, 64, 72, 72),
+            dtype=torch.float32,
+            device="cuda",
+        )
+        position = torch.zeros(
+            (batch, 10, 64, 72, 72),
             dtype=torch.float16,
             device="cuda",
         )
-        position = torch.zeros_like(memory)
-        pointers = torch.zeros((batch, 16, 256), dtype=torch.float16, device="cuda")
+        pointers = torch.zeros((batch, 16, 256), dtype=torch.float32, device="cuda")
         for row, entries in enumerate(packed.spatial_entries):
             for column, entry in enumerate(entries):
                 if entry is None:
@@ -194,6 +235,7 @@ class OrtCudaBaseVideoAdapter:
             "pointer-valid": self._upload(packed.pointer_valid),
             "pointer-age": self._upload(packed.pointer_age),
             "pointer-conditioning": self._upload(packed.pointer_conditioning),
+            "pointer-tpos-denominator": self._upload(packed.pointer_tpos_denominator),
         }
 
     def _pack_prompt(self, prompt_inputs: dict[str, np.ndarray]) -> dict[str, Any]:
@@ -224,9 +266,9 @@ class OrtCudaBaseVideoAdapter:
         return _BackendPreviewBatch(
             low_res_logits=tuple(logits),
             scores=tuple(scores),
-            commit_masks=outputs["preview-commit-mask"],
-            object_pointers=outputs["preview-object-pointer"],
-            object_scores=outputs["preview-object-score"],
+            commit_masks=self._clone_device(outputs["preview-commit-mask"]),
+            object_pointers=self._clone_device(outputs["preview-object-pointer"]),
+            object_scores=self._clone_device(outputs["preview-object-score"]),
         )
 
     def preview(
@@ -293,7 +335,9 @@ class OrtCudaBaseVideoAdapter:
         outputs = self._run(
             self._COMMIT_ROLE,
             {
-                "frame-image-embedding": inputs["frame-image-embedding"],
+                "batched-frame-image-embedding": inputs[
+                    "batched-frame-image-embedding"
+                ],
                 "preview-commit-mask": preview.commit_masks,
                 "preview-object-score": preview.object_scores,
                 "is-mask-from-points": self._upload(is_points),

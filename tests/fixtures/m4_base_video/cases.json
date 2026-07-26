@@ -1,0 +1,36 @@
+{
+    "fixture_version": "m4-base-video-trajectory-v1",
+    "owner": "Export Tech Lead",
+    "official_source_commit": "cdff5a927beba49b6249c1e2973b29bd64f40b83",
+    "checkpoint_sha256": "9999e2341ceef5e136daa386eecb55cb414446a00ac2b55eb2dfd2f7c3cf8c9e",
+    "source_image": {
+        "workspace_path": "sam3-export/artifacts/sam3-interactive-image-pvs-ortcuda-v2/fixtures/images/truck.jpg",
+        "sha256": "941715e721c8864324a1425b445ea4dde0498b995c45ddce0141a58971c6ff99"
+    },
+    "video": {
+        "frame_count": 3,
+        "transforms": [
+            {"id": "frame-0", "horizontal_roll": 0, "brightness_delta": 0},
+            {"id": "frame-1", "horizontal_roll": 8, "brightness_delta": 2},
+            {"id": "frame-2", "horizontal_roll": 16, "brightness_delta": 4}
+        ]
+    },
+    "initial_prompt": {
+        "points_xy": [[0.50, 0.55]],
+        "point_labels": [1],
+        "coordinates": "relative XY"
+    },
+    "correction_prompt": {
+        "points_xy": [[0.50, 0.55], [0.58, 0.62]],
+        "point_labels": [1, 1],
+        "coordinates": "relative XY"
+    },
+    "measurement": {"warmup": 2, "repeats": 5},
+    "parity_thresholds": {
+        "task_mask_iou_minimum": 0.98,
+        "score_max_abs_maximum": 0.02,
+        "low_res_logit_mean_abs_maximum": 0.05,
+        "memory_mean_abs_maximum": 0.05,
+        "object_pointer_cosine_minimum": 0.999
+    }
+}

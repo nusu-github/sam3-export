@@ -23,6 +23,8 @@ venv/
 *.pth
 *.onnx
 artifacts/
+.m4-work/
+onnxruntime_profile__*.json
 *.log
 .DS_Store
 

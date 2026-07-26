@@ -4,7 +4,7 @@ Status: reviewed M0 baseline at `sam3-export` commit
 `847db18e0558816d88d592f24a45c36593ae1e8e` and official-model repository
 commit `cdff5a927beba49b6249c1e2973b29bd64f40b83`.
 
-This remains the historical M0 inventory. M2/M3 additions are owned by
+This remains the historical M0 inventory. M2/M3/M4 additions are owned by
 [EXPORT_CUTS.md](EXPORT_CUTS.md) and [DEPLOYMENT_PLANS.md](DEPLOYMENT_PLANS.md);
 they do not retroactively add metadata to the legacy files below.
 

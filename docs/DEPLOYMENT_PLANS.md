@@ -10,6 +10,38 @@ Lifecycle and dispatch role are separate. **Shipped**, **candidate** and
 **fallback** describe dispatch. A selected-K recipe can therefore be a
 candidate with an intended optional role without calling it shipped.
 
+## M4 shipped base-video plan
+
+`sam3_base_video_tracking_ortcuda_v1` is shipped/default only for **SAM3 base
+video tracking / point-box-mask correction / per-object batch / ORT CUDA v1**.
+It is packaged under `artifacts/sam3-base-video-tracking-ortcuda-v2/` with the
+fixed `b4-1008-p16-box1-mask288-m10-ptr16-fp16` profile. M2 image PCS and M3
+interactive image remain defaults in their own use cases.
+
+```text
+TrackerFrameEncode -- per-frame CUDA cache ---------------------+
+                                                                |
+correction: BaseTrackerPreviewMultimask3 (display only)         |
+                    -> BaseTrackerPreviewSingle1                |
+                    -> BaseMemoryCommit                         |
+                                                                |
+propagation: BaseTrackerStepAndCommitSingle1 <------------------+
+                    -> host-owned BaseVideoStateV1
+```
+
+Correction preview is non-mutating and only the final single1 handle may be
+committed. Steady-state propagation uses the measured fused artifact. The
+measured B4 profile packs independent objects with validity padding: 1 and 4
+objects use one tracker launch, while 5 use two; every frame encode runs once.
+No memory or attention is shared across objects.
+
+The frame pyramid, memory, pointer and commit tensors remain CUDA-resident.
+Only public scores, final low-resolution logits and final masks cross D2H.
+CUDA EP and IOBinding are required; there is no implicit CPU, M3 image-cache or
+legacy fallback. The state/cache and Public API contract is
+[BASE_VIDEO_API.md](BASE_VIDEO_API.md), and B4/fused adoption is recorded in
+[the M4 decision record](decision-records/M4_BASE_VIDEO_CUT.md).
+
 ## M3 shipped interactive image plan
 
 `sam3_base_interactive_image_pvs_ortcuda_v1` is shipped/default only for
@@ -43,7 +75,7 @@ The three cached image tensors remain CUDA-resident through every prediction.
 Only scores and final low-resolution logits cross D2H. CUDA EP and IOBinding
 are required; there is no CPU pyramid, legacy split or text-PCS fallback. The
 plan has no video/object/memory state and performs no preview, memory encode or
-commit. Those transitions remain M4 work.
+commit. Those transitions are owned by the separate M4 plan.
 
 The fused image-only cut and its applicable profile are fixed by the
 [M3 decision record](decision-records/M3_INTERACTIVE_IMAGE_CUT.md).
@@ -133,9 +165,8 @@ copying large continuation tensors through CPU/NumPy. See
 
 ## Later plans
 
-SAM3 base video (M4), SAM3.1 native Multiplex (M5) and additional backend
-bundles (M6) remain planned. SAM3 base object batching and SAM3.1 16-slot
-bucket-space Multiplex require separate state ABIs.
+SAM3.1 native Multiplex (M5) and additional backend bundles (M6) remain
+planned. M4 `BaseVideoStateV1` is not a preliminary SAM3.1 bucket-space ABI.
 
 ## Decision and publication gates
 
@@ -144,7 +175,8 @@ bucket-space Multiplex require separate state ABIs.
   four-stage parity.
 - A plan manifest identifies default, optional and fallback applicability per
   backend/profile. An unrecorded fallback is not permitted.
-- The M2 manifests and M3 interactive manifest passed schema/package
+- The M2 manifests, M3 interactive manifest and M4 base-video manifest passed
+  schema/package
   validation and their CUDA/Public API release validators; later plan changes
   require the same gate.
 - The Host Runtime dispatches by public plan ID and resolved manifest; it does

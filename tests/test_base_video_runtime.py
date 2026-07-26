@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+import typing
 
 import numpy as np
 from PIL import Image
@@ -19,6 +20,10 @@ from sam3.runtime import (
     PreviewHandleError,
     SessionClosedError,
     StateCapacityError,
+    VideoFramePrediction,
+    VideoHandle,
+    VideoPrediction,
+    VideoPreview,
     VideoStateError,
     base_video,
     create_image_session,
@@ -322,6 +327,19 @@ def test_correction_replacement_invalidates_non_conditioning(bundle: Path) -> No
     session.close()
 
 
+def test_reverse_propagation_uses_descending_inclusive_range(bundle: Path) -> None:
+    session = create_video_session(BASE_VIDEO_PLAN_ID, bundle_dir=bundle)
+    session.set_video(_frames(4))
+    session.add_object(3)
+    handle = session.preview(3, 3, options=_single_options()).preview_handle
+    assert handle is not None
+    session.commit(handle)
+    output = session.propagate(start_frame=2, end_frame=0, reverse=True)
+    assert [value.frame_index for value in output] == [2, 1, 0]
+    assert session._state.require_object(3).direction == -1
+    session.close()
+
+
 def test_conditioning_capacity_has_no_silent_eviction(bundle: Path) -> None:
     session = create_video_session(BASE_VIDEO_PLAN_ID, bundle_dir=bundle)
     session.set_video(_frames(5))
@@ -389,3 +407,18 @@ def test_public_values_do_not_expose_backend_state(bundle: Path) -> None:
     ):
         assert private_term not in public_text
     session.close()
+
+
+def test_public_annotations_do_not_expose_backend_abi() -> None:
+    public_types = (
+        VideoHandle,
+        VideoPreview,
+        VideoPrediction,
+        VideoFramePrediction,
+        type(create_video_session),
+    )
+    annotation_text = " ".join(
+        repr(typing.get_type_hints(value)) for value in public_types
+    )
+    for private_term in ("OrtValue", "backend_name", "memory_slot", "CUDA"):
+        assert private_term not in annotation_text

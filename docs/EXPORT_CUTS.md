@@ -11,6 +11,27 @@ logical component is not automatically a separately distributed artifact.
 
 ## Shipped deployment bundles
 
+### SAM3 base video tracking / point-box-mask correction / per-object batch / ORT CUDA v1
+
+| Property | Contract |
+|---|---|
+| Status | Shipped v2 bundle; default only within the SAM3 base-video use case |
+| Backend/profile | ORT 1.27.0 CUDA EP + IOBinding; `b4-1008-p16-box1-mask288-m10-ptr16-fp16` |
+| Package manifest | `sam3_base_video_tracking_ortcuda_v1`, contract `1.0.0` |
+| Host boundary | RGB frame validation/packing, object/revision/slot lifecycle, frame cache, fixed B4 chunking, final mask conversion |
+| Exclusions | M2 image PCS and M3 interactive-image dispatch, streaming video, CPU fallback, SAM3.1 Tri neck/bucket state/Multiplex |
+
+| Public artifact role | Short tensor I/O / boundary |
+|---|---|
+| `tracker-frame-encode` | normalized `pixel_values[1,3,1008,1008]` fp16 -> unconditioned `image_embedding/image_position[1,256,72,72]`, `high_res_0[1,32,288,288]`, `high_res_1[1,64,144,144]`; one CUDA frame cache entry |
+| `base-tracker-preview-multimask3` | cached frame view + B4 fixed `BaseVideoStateV1` + P16/box1/mask288 prompt validity -> three low-resolution masks/scores and device commit candidates; preview-only |
+| `base-tracker-preview-single1` | same inputs -> one low-resolution mask/score, object pointer/score and CUDA commit mask; only this preview can be committed |
+| `base-memory-commit` | cached frame view + final single device outputs -> one conditioning memory feature/position per valid object; correction commit only |
+| `base-tracker-step-and-commit-single1` | cached frame view + B4 state + empty propagation prompt -> single prediction, pointer/score and non-conditioning memory in one steady-state launch |
+
+Exact B4 state tensors, backend names, hashes and residency are manifest-owned.
+The host-visible contract is [BASE_VIDEO_API.md](BASE_VIDEO_API.md).
+
 ### SAM3 base interactive image PVS / point-box-mask / ORT CUDA v1
 
 | Property | Contract |
@@ -84,7 +105,7 @@ of the draft v2 contract rather than retroactive claims about v1.
 
 ## Later artifacts are not shipped artifacts
 
-Video, SAM3.1 and other backend/profile variants remain later milestones.
+SAM3.1 and other backend/profile variants remain later milestones.
 Internal smoke wrappers do not make them shipped artifacts.
 
 ## Catalog admission rule

@@ -25,18 +25,21 @@ Public deployment artifacts are listed only in
 | `InitialNoMemoryCondition` | M3 logical component | Adds the checkpoint-owned initial/no-memory condition to the 72x72 base view. Its identity is part of the M3 cache key. | M3 cache/repeated-click gate |
 | `InteractiveImageEncodeInitial` | M3 plan component | Fuses vision, feature projection and initial conditioning for the shipped image-only artifact; this wrapper is not a claim that every logical component ships separately. | M3 export/CUDA validator |
 | `InteractivePredictMultimask3` / `InteractivePredictSingle1` | M3 plan components | Production prompt encoder and mask decoder with fixed P16/box1/mask288 validity ABI and static output policy. | M3 official-to-Public parity |
+| `TrackerFrameEncode` | M4 plan component | Produces the unconditioned 72x72 tracker view and 288/144 high-resolution views once per frame; the cache condition is distinct from M3. | M4 official-to-Public trajectory parity |
+| `BaseTrackerPreviewMultimask3` / `BaseTrackerPreviewSingle1` | M4 plan components | Memory-aware B4 prediction with fixed `BaseVideoStateV1` and the M3 prompt ABI. Multimask is preview-only; single emits private device values required for commit. | M4 correction and trajectory gates |
+| `BaseMemoryCommit` | M4 plan component | Converts the final single preview into conditioning memory. It is a correction boundary, not the steady-state default by itself. | M4 correction/replacement gates |
+| `BaseTrackerStepAndCommitSingle1` | M4 plan component | Fused single preview and non-conditioning memory encode for steady-state propagation; selected only for the shipped B4 profile. | M4 fused-cut decision and CUDA validator |
 | `sam3.export.fixtures.PromptEncode` | Test-only fixture | Fixed tiny/default point contract used for unit export coverage. It is not the production prompt encoder artifact. | Prompt interactive export tests |
 | `sam3.export.fixtures.InteractiveDecode` | Test-only fixture | Self-contained tiny SAM head; it does not consume `PromptEncode` outputs and is not a production pipeline. | Prompt interactive export tests |
-| `MemoryEncode` | Internal component / fixture | Logical memory operation. Variant-specific scale/bias and single/mux layout are not a generic production ABI. | Remaining-cut tests; M4/M5 mapping tests later |
-| `TrackerStep` | Internal SAM3-base component / fixture | Fixed per-object tracker step. It is neither a one-object-per-session mandate nor a SAM3.1 Multiplex implementation. | Remaining-cut tests; M4 trajectory tests later |
+| `MemoryEncode` | Internal component / fixture | Earlier generic-shape fixture retained for component tests. M4 production uses checkpoint-validated `BaseMemoryCommit`; this fixture is not its artifact ABI. | Remaining-cut regression tests |
+| `TrackerStep` | Internal SAM3-base component / fixture | Earlier fixed-step fixture retained for component tests. M4 production artifacts are separately mapped; this remains neither a public plan nor SAM3.1 Multiplex. | Remaining-cut regression tests |
 
 `scripts/export_smoke.py` verifies internal eager/`torch.export` round trips. Its
 coverage is a component-quality gate, not a public artifact release list.
 
 ## Planned canonical components
 
-Names such as `VisionTrunk`, `DetectorNeck`, `BaseTrackerPreview`,
-`MemoryEncodeSingle`, `Mux`, `Demux`, `TrackPropagateMux16` and
+Names such as `VisionTrunk`, `DetectorNeck`, `Mux`, `Demux`, `TrackPropagateMux16` and
 `MemoryEncodeMux16` are architectural
 component names. They become code and fixtures in the milestone that needs
 them; listing them does not claim they are implemented or shipped.

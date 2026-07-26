@@ -87,16 +87,22 @@ def test_pack_memory_zero_one_max_and_padding() -> None:
     assert one.memory_age[0, 0] == 1
     assert one.memory_conditioning[0, 0]
     assert one.pointer_valid[0].sum() == 1
+    assert one.pointer_tpos_denominator.tolist() == [1.0] * 4
+
+    (same_frame,) = state.pack([10], frame_index=0, reverse=False)
+    assert not same_frame.memory_valid.any()
+    assert not same_frame.pointer_valid.any()
 
     for frame_index in (10, 20, 30):
         state.commit(10, _entry(frame_index, conditioning=True))
-    for frame_index in range(34, 40):
+    for frame_index in range(25, 40):
         state.commit(10, _entry(frame_index, conditioning=False))
     (full,) = state.pack([10, 20], frame_index=40, reverse=False)
     assert full.memory_valid[0].sum() == 10
     assert full.memory_conditioning[0, :4].all()
     assert not full.memory_conditioning[0, 4:].any()
     assert full.memory_age[0, 4:].tolist() == [1, 2, 3, 4, 5, 6]
+    assert full.pointer_valid[0].sum() == 16
     assert not full.memory_valid[1].any()
 
 
@@ -105,11 +111,14 @@ def test_pack_chunks_capacity_plus_one_and_reverse_signed_age() -> None:
     for object_id in range(5):
         state.add_object(object_id)
     state.commit(0, _entry(8, conditioning=True))
-    chunks = state.pack(list(range(5)), frame_index=5, reverse=True)
+    chunks = state.pack(
+        list(range(5)), frame_index=5, reverse=True, video_frame_count=20
+    )
     assert len(chunks) == 2
     assert chunks[0].object_valid.sum() == 4
     assert chunks[1].object_valid.sum() == 1
     assert chunks[0].memory_age[0, 0] == -3
+    assert chunks[0].pointer_tpos_denominator.tolist() == [15.0] * 4
 
 
 def test_correction_replacement_invalidates_only_influence_direction() -> None:
@@ -133,3 +142,12 @@ def test_duplicate_and_unknown_objects_are_rejected() -> None:
         state.add_object(3)
     with pytest.raises(KeyError, match="unknown"):
         state.pack([4], frame_index=0, reverse=False)
+
+
+def test_b8_candidate_pads_and_chunks_capacity_plus_one() -> None:
+    state = BaseVideoStateV1(batch_capacity=8)
+    for object_id in range(9):
+        state.add_object(object_id)
+    chunks = state.pack(list(range(9)), frame_index=0, reverse=False)
+    assert [int(chunk.object_valid.sum()) for chunk in chunks] == [8, 1]
+    assert all(chunk.object_valid.shape == (8,) for chunk in chunks)

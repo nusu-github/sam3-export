@@ -14,7 +14,8 @@ See the [glossary](docs/GLOSSARY.md), [component policy](docs/EXPORT_POLICY.md),
 [public artifact catalog](docs/EXPORT_CUTS.md), and
 [deployment plans](docs/DEPLOYMENT_PLANS.md). Public APIs are specified in
 [IMAGE_PCS_API.md](docs/IMAGE_PCS_API.md) and
-[INTERACTIVE_IMAGE_API.md](docs/INTERACTIVE_IMAGE_API.md).
+[INTERACTIVE_IMAGE_API.md](docs/INTERACTIVE_IMAGE_API.md), with the M4 video
+contract in [BASE_VIDEO_API.md](docs/BASE_VIDEO_API.md).
 
 ## Package layout
 
@@ -109,6 +110,21 @@ CPU/legacy fallback and excludes video memory state, object batching and
 SAM3.1. See the public artifact and deployment-plan documents for the exact
 scope.
 
+M4 ships **SAM3 base video tracking / point-box-mask correction / per-object
+batch / ORT CUDA v1** as the default only for the base-video use case. Its B4
+profile uses non-mutating correction preview plus single commit and fused
+steady-state propagation:
+
+```bash
+PYTHONPATH=src python scripts/export_base_video_v2.py \
+  --official-repo ../sam3 --checkpoint /path/to/sam3.pt
+```
+
+The bundle keeps frame, memory and pointer values CUDA-resident, encodes each
+frame once, and chunks five objects into two B4 tracker launches. It has no CPU
+fallback and excludes SAM3.1 Tri neck, bucket state and Multiplex. See
+[BASE_VIDEO_API.md](docs/BASE_VIDEO_API.md) for the state and lifecycle rules.
+
 ## Installation
 
 ```bash
@@ -121,7 +137,7 @@ is never imported by the export cuts.
 
 The core package includes manifest validation but delays importing ONNX
 Runtime until session creation. Install the pinned CUDA runtime only when using
-the M2 or M3 bundles:
+the M2, M3 or M4 bundles:
 
 ```bash
 pip install -e '.[ort-cuda]'

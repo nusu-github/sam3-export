@@ -128,6 +128,7 @@ class PackedObjectState:
     pointer_valid: np.ndarray
     pointer_age: np.ndarray
     pointer_conditioning: np.ndarray
+    pointer_tpos_denominator: np.ndarray
 
 
 def _closest_conditioning(
@@ -214,6 +215,7 @@ class BaseVideoStateV1:
         *,
         frame_index: int,
         reverse: bool,
+        video_frame_count: int | None = None,
     ) -> list[PackedObjectState]:
         if not object_ids:
             return []
@@ -222,17 +224,28 @@ class BaseVideoStateV1:
         for object_id in object_ids:
             self.require_object(object_id)
         direction = -1 if reverse else 1
+        if video_frame_count is None:
+            video_frame_count = max(frame_index + 1, 1)
+        if video_frame_count <= 0:
+            raise ValueError("video_frame_count must be positive")
+        pointer_tpos_denominator = max(min(video_frame_count, POINTER_CAPACITY) - 1, 1)
         return [
             self._pack_chunk(
                 object_ids[offset : offset + self.batch_capacity],
                 frame_index=frame_index,
                 direction=direction,
+                pointer_tpos_denominator=pointer_tpos_denominator,
             )
             for offset in range(0, len(object_ids), self.batch_capacity)
         ]
 
     def _pack_chunk(
-        self, object_ids: list[int], *, frame_index: int, direction: int
+        self,
+        object_ids: list[int],
+        *,
+        frame_index: int,
+        direction: int,
+        pointer_tpos_denominator: int,
     ) -> PackedObjectState:
         capacity = self.batch_capacity
         padded_ids: list[int | None] = [*object_ids]
@@ -246,6 +259,9 @@ class BaseVideoStateV1:
         pointer_valid = np.zeros((capacity, POINTER_CAPACITY), dtype=np.bool_)
         pointer_age = np.zeros((capacity, POINTER_CAPACITY), dtype=np.int64)
         pointer_conditioning = np.zeros((capacity, POINTER_CAPACITY), dtype=np.bool_)
+        pointer_denominator = np.full(
+            (capacity,), pointer_tpos_denominator, dtype=np.float32
+        )
         spatial_rows: list[tuple[VideoStateEntry | None, ...]] = []
         pointer_rows: list[tuple[VideoStateEntry | None, ...]] = []
 
@@ -257,7 +273,12 @@ class BaseVideoStateV1:
             state = self.objects[object_id]
             state.direction = direction
             selected_cond, unselected_cond = _closest_conditioning(
-                state.conditioning, frame_index
+                {
+                    index: entry
+                    for index, entry in state.conditioning.items()
+                    if index != frame_index
+                },
+                frame_index,
             )
             spatial: list[VideoStateEntry | None] = list(selected_cond)
             spatial.extend([None] * (CONDITIONING_CAPACITY - len(spatial)))
@@ -317,6 +338,7 @@ class BaseVideoStateV1:
             pointer_valid=pointer_valid,
             pointer_age=pointer_age,
             pointer_conditioning=pointer_conditioning,
+            pointer_tpos_denominator=pointer_denominator,
         )
 
 

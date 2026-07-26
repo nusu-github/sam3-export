@@ -84,6 +84,7 @@ class BaseTrackerPreview(nn.Module):
         pointer_valid: Tensor,
         pointer_age: Tensor,
         pointer_conditioning: Tensor,
+        pointer_tpos_denominator: Tensor,
     ) -> Tensor:
         batch, slots, _channels, height, width = memory_features.shape
         valid_objects = object_valid.to(torch.bool)
@@ -93,7 +94,7 @@ class BaseTrackerPreview(nn.Module):
 
         # Conditioning frames always use the final temporal embedding. The six
         # non-conditioning entries are packed at signed ages +/-1..+/-6.
-        temporal_index = self.variant.num_maskmem - memory_age.abs() - 1
+        temporal_index = memory_age.abs() - 1
         temporal_index = temporal_index.clamp(0, self.variant.num_maskmem - 1)
         temporal_index = torch.where(
             memory_conditioning.to(torch.bool),
@@ -115,18 +116,12 @@ class BaseTrackerPreview(nn.Module):
         # A masked-out object with no memory still needs one numerically safe key;
         # the transformer result is discarded in favor of the official no-memory
         # route below.
-        safe_first = torch.zeros_like(memory_padding[:, :1])
-        memory_padding = torch.cat(
-            (
-                torch.where(has_memory[:, None], memory_padding[:, :1], safe_first),
-                memory_padding[:, 1:],
-            ),
-            dim=1,
-        )
+        safe_first = memory_padding[:, :1] & has_memory[:, None]
+        memory_padding = torch.cat((safe_first, memory_padding[:, 1:]), dim=1)
 
         pointer_position = get_1d_sine_pe(
             pointer_age.abs().to(torch.float32)
-            / float(self.variant.object_pointer_capacity - 1),
+            / pointer_tpos_denominator[:, None].to(torch.float32).clamp_min(1.0),
             dim=self.variant.hidden_dimension,
         ).to(dtype=self.tracker.obj_ptr_tpos_proj.weight.dtype)
         pointer_position = self.tracker.obj_ptr_tpos_proj(pointer_position)
@@ -238,18 +233,54 @@ class BaseTrackerPreview(nn.Module):
             has_mask,
             dtype,
         )
+        batch = point_coords.shape[0]
+        empty_coords = torch.zeros(
+            (batch, 1, 2), dtype=point_coords.dtype, device=point_coords.device
+        )
+        empty_labels = torch.full(
+            (batch, 1), -1, dtype=point_labels.dtype, device=point_labels.device
+        )
+        empty_sparse = self.tracker.sam_prompt_encoder._embed_points(
+            empty_coords, empty_labels, pad=True
+        )
+        empty_dense = self.tracker.sam_prompt_encoder.no_mask_embed.weight.reshape(
+            1, -1, 1, 1
+        ).expand_as(dense)
+        empty_valid = torch.ones(
+            empty_sparse.shape[:2], dtype=torch.bool, device=point_valid.device
+        )
         image_pe = self.tracker.sam_prompt_encoder.get_dense_pe().to(
             device=conditioned.device, dtype=dtype
         )
-        low_res, scores, output_tokens, object_score = self.tracker.sam_mask_decoder(
-            image_embeddings=conditioned,
-            image_pe=image_pe,
+        decoder_kwargs = {
+            "image_embeddings": conditioned,
+            "image_pe": image_pe,
+            "multimask_output": self.multimask_output,
+            "repeat_image": False,
+            "high_res_features": [high_res_0, high_res_1],
+        }
+        prompted = self.tracker.sam_mask_decoder(
             sparse_prompt_embeddings=sparse.to(dtype=dtype),
             dense_prompt_embeddings=dense.to(dtype=dtype),
-            multimask_output=self.multimask_output,
-            repeat_image=False,
-            high_res_features=[high_res_0, high_res_1],
             sparse_prompt_valid=sparse_valid,
+            **decoder_kwargs,
+        )
+        empty = self.tracker.sam_mask_decoder(
+            sparse_prompt_embeddings=empty_sparse.to(dtype=dtype),
+            dense_prompt_embeddings=empty_dense.to(dtype=dtype),
+            sparse_prompt_valid=empty_valid,
+            **decoder_kwargs,
+        )
+        has_prompt = (
+            point_valid.any(dim=1) | has_box.to(torch.bool) | has_mask.to(torch.bool)
+        )
+        low_res, scores, output_tokens, object_score = tuple(
+            torch.where(
+                has_prompt.reshape((batch,) + (1,) * (prompted_value.ndim - 1)),
+                prompted_value,
+                empty_value,
+            )
+            for prompted_value, empty_value in zip(prompted, empty)
         )
         appearing = object_score > 0
         low_res = torch.where(appearing[:, None, None], low_res, -1024.0).float()
@@ -262,10 +293,10 @@ class BaseTrackerPreview(nn.Module):
         output_token = output_tokens[:, 0]
         if self.multimask_output:
             best = torch.argmax(scores, dim=-1)
-            batch = torch.arange(low_res.shape[0], device=low_res.device)
-            commit_mask = high_res[batch, best].unsqueeze(1)
+            batch_indices = torch.arange(low_res.shape[0], device=low_res.device)
+            commit_mask = high_res[batch_indices, best].unsqueeze(1)
             if output_tokens.shape[1] > 1:
-                output_token = output_tokens[batch, best]
+                output_token = output_tokens[batch_indices, best]
         else:
             commit_mask = high_res
         object_pointer = self.tracker.obj_ptr_proj(output_token)
@@ -298,6 +329,7 @@ class BaseTrackerPreview(nn.Module):
         pointer_valid: Tensor,
         pointer_age: Tensor,
         pointer_conditioning: Tensor,
+        pointer_tpos_denominator: Tensor,
         point_coords: Tensor,
         point_labels: Tensor,
         point_valid: Tensor,
@@ -323,6 +355,7 @@ class BaseTrackerPreview(nn.Module):
                     pointer_valid,
                     pointer_age,
                     pointer_conditioning,
+                    pointer_tpos_denominator,
                     point_coords,
                     point_labels,
                     point_valid,
@@ -346,6 +379,7 @@ class BaseTrackerPreview(nn.Module):
             pointer_valid,
             pointer_age,
             pointer_conditioning,
+            pointer_tpos_denominator,
             point_coords,
             point_labels,
             point_valid,
@@ -358,8 +392,8 @@ class BaseTrackerPreview(nn.Module):
     def _forward_impl(
         self, *values: Tensor
     ) -> tuple[Tensor, Tensor, Tensor, Tensor, Tensor]:
-        conditioned = self._memory_condition(values[0], values[1], *values[4:14])
-        return self._predict(conditioned, values[2], values[3], *values[14:])
+        conditioned = self._memory_condition(values[0], values[1], *values[4:15])
+        return self._predict(conditioned, values[2], values[3], *values[15:])
 
 
 class BaseTrackerPreviewMultimask3(BaseTrackerPreview):

@@ -319,9 +319,12 @@ class BaseVideoSession:
         handle = self._require_video()
         output_size = _validate_options(options, handle.frame_size)
         prompt_inputs, prompt_facts = _prompt_arrays(prompt, handle.frame_size)
-        packed = self._state.pack([object_id], frame_index=frame_index, reverse=False)[
-            0
-        ]
+        packed = self._state.pack(
+            [object_id],
+            frame_index=frame_index,
+            reverse=False,
+            video_frame_count=handle.frame_count,
+        )[0]
         revision = self._state.revision
         frame_cache = self._get_frame_cache(frame_index)
         backend = self._adapter.preview(
@@ -473,6 +476,7 @@ class BaseVideoSession:
         reverse: bool = False,
     ) -> list[VideoFramePrediction]:
         self._ensure_open()
+        handle = self._require_video()
         self._check_frame_index(start_frame)
         self._check_frame_index(end_frame)
         if not isinstance(reverse, bool):
@@ -511,7 +515,10 @@ class BaseVideoSession:
                         object_id, existing
                     )
             for packed in self._state.pack(
-                pending, frame_index=frame_index, reverse=reverse
+                pending,
+                frame_index=frame_index,
+                reverse=reverse,
+                video_frame_count=handle.frame_count,
             ):
                 if self._adapter.fused_default:
                     backend, committed = self._adapter.step_and_commit(

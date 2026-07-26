@@ -6,8 +6,8 @@ defines the machine-readable contract for a deployment **plan bundle**, not an
 individual logical component. It uses JSON Schema Draft 2020-12 and fixes
 `format` to `sam3-deployment-manifest-v2`.
 
-M2 and M3 use this schema for the fixed image PCS and interactive image ORT
-CUDA plans. The current `sam3-split-onnx-v1` manifest remains a
+M2, M3 and M4 use this schema for fixed image PCS, interactive image and base
+video ORT CUDA plans. The current `sam3-split-onnx-v1` manifest remains a
 separate legacy format. Loaders dispatch on `format`; they must not treat v1 as
 a partial v2 document or invent missing provenance, policy, hash, cache or
 handoff values.
@@ -46,7 +46,7 @@ records so it has no self-hash cycle.
 
 The schema fixture under `tests/fixtures/manifest_v2/` is a minimal skeleton of
 the M2 fused default plan. It demonstrates structural validation only; the
-generated M2/M3 bundle manifests and owned image fixtures satisfy their release
+generated M2/M3/M4 bundle manifests and owned fixtures satisfy their release
 gates.
 
 ## Validation layers
@@ -54,12 +54,13 @@ gates.
 JSON Schema validates the release blocks, main types, current vocabulary and
 hash form. The common package validator additionally checks unique IDs,
 artifact/file/tensor references, file existence/size/SHA-256, required CUDA
-IOBinding capabilities and named fallback-plan presence. M2 and M3 adapters
+IOBinding capabilities and named fallback-plan presence. M2, M3 and M4 adapters
 then check scope and declared input/output bindings against each ORT graph. It
 does not implement a general DAG executor or future-backend cross-rule matrix.
 
 Generated manifests live at `manifests/<plan-id>.json` in ignored release
 bundles. Their format is `sam3-deployment-manifest-v2` and contract version is
-`1.0.0`. Current profiles are `b1-1008-l32-q200-fp16` for image PCS and
-`b1-1008-p16-box1-mask288-fp16` for interactive image PVS. v1 remains
+`1.0.0`. Current profiles are `b1-1008-l32-q200-fp16` for image PCS,
+`b1-1008-p16-box1-mask288-fp16` for interactive image PVS, and
+`b4-1008-p16-box1-mask288-m10-ptr16-fp16` for base video. v1 remains
 separately dispatched and receives no inferred v2 metadata.

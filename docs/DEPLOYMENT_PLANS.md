@@ -31,9 +31,10 @@ The package remains usable within this scope. M0 does not rewrite its manifest
 or graphs and does not infer missing provenance, cache or file-integrity
 metadata.
 
-## M1 candidates
+## M1-approved candidates
 
-No candidate in this section is shipped or approved as a default at M0.
+The M1 decisions below establish M2 input. No candidate in this section is
+shipped until the M2 release contract and manifest gates pass.
 
 ### Fused image PCS candidate
 
@@ -45,13 +46,15 @@ GroundingFull        = Fusion + DETR + Mask
 
 The intended plan ID is `sam3_base_image_pcs_text_ortcuda_v1`. It preserves
 independent image and text cache lifetimes while removing the legacy grounding
-encoder/decoder boundary. M1 E1 must compare fused and split graphs with the
-same 200-mask output policy, fixtures, dtype, warmup, IOBinding and device
-residency. M1 E2 separately decides which vision outputs remain public.
+encoder/decoder boundary. M1 E1 approves `GroundingFull` as its default
+candidate and the corrected text-only split as a compatibility fallback. The
+legacy v1 split is neither of those candidates. See
+[the E1 record](decision-records/M1_E1_GROUNDING_FUSION.md).
 
-If E1 rejects the fused recipe for an applicable backend/profile, the approved
-split recipe remains the fallback under a distinct manifest and explicit
-status; backend differences do not change the Public API.
+M1 E2 approves the required-position-only vision boundary as the default
+candidate. Feature-only is optional when a profile explicitly prioritizes the
+smaller boundary, and full output is compatibility fallback only. See
+[the E2 record](decision-records/M1_E2_VISION_OUTPUTS.md).
 
 ### Policy / selected-K optional candidate
 
@@ -63,13 +66,13 @@ GroundingQueryCore -> compact scores/boxes/presence -> host selection
                                       GroundingMaskSelectedK
 ```
 
-This candidate is optional and pending M1 E3. Selection occurs only after the
-final all-query interaction. `K` is a fixed profile (initial comparison:
-16/32/64 and, if useful, 25) with a `valid_mask`, not a data-dependent output
-axis. A public split recipe requires device-resident continuation handoff. A
-backend that cannot provide it must dispatch to fused `GroundingFull` or a
-graph-internal top-k recipe rather than copy large continuation tensors through
-CPU/NumPy.
+M1 E3 approves fixed K=32 as an optional M2 candidate. Selection occurs only
+after the final all-query interaction, and `valid_mask` preserves a fixed
+shape. K=16 and K=64 were measured but are not admitted to the initial plan.
+A public split recipe requires device-resident continuation handoff. A backend
+that cannot provide it dispatches to fused raw-200 `GroundingFull`, never by
+copying large continuation tensors through CPU/NumPy. See
+[the E3 record](decision-records/M1_E3_SELECTED_K.md).
 
 ## Later plans
 
@@ -81,9 +84,9 @@ separate state ABIs.
 
 ## Decision and publication gates
 
-- E1, E2 and E3 each receive a decision record with replayable fixtures,
-  median/p95 latency, peak/persistent VRAM, copy bytes, session count,
-  artifact bytes and four-stage parity.
+- E1, E2 and E3 decision records contain replayable fixtures, median/p95
+  latency, peak/persistent VRAM, copy bytes, session count, artifact bytes and
+  four-stage parity.
 - A plan manifest identifies default, optional and fallback applicability per
   backend/profile. An unrecorded fallback is not permitted.
 - Candidate names move into the shipped catalog only after the M2 release

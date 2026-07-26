@@ -11,9 +11,14 @@ Public deployment artifacts are listed only in
 |---|---|---|---|
 | `VisionTower` | Internal component | Named eager detector/SAM2 feature view. Not itself a stable backend tuple ABI. | Vision/export component tests |
 | `VisionTowerFlat` | Internal component and legacy-stage producer | Flat tensor tuple used by export. `add_sam2=True` is diagnostic/multi-branch output, not a universal public ABI. | Vision export tests and legacy ONNX comparison |
+| `VisionTowerProfiled` | M1 candidate component | Emits full, required-position-only or feature-only fixed tuples for E2. The E2 record, not this wrapper, owns plan admission. | M1 E2 harness and decision record |
 | `TextTower` | Internal component and legacy-stage producer | Independent text cache boundary with tokenizer-valid input mask and key-padding output mask. | Text/export component tests |
-| `GroundingEncode` | Internal component and legacy split stage | Useful local parity cut; standard deployment separation is pending M1 fused-vs-split evidence. | Grounding component tests and M1 E1 |
+| `GroundingEncode` | Internal component and legacy split stage | Useful local parity cut. M1 approves only the corrected text-only split as an M2 compatibility fallback; legacy v1 remains distinct. | Grounding component tests and M1 E1 |
+| `TextOnlyPromptEncode` / `GroundingEncodeTextOnly` | M1 candidate components | Corrected text-only path includes the official image-conditioned empty-geometry CLS token. It does not rewrite legacy v1. | M1 official/local parity harness |
 | `GroundingDecode` | Internal component and legacy split stage | Produces dense 200-query image PCS outputs. Public standalone status is not implied. | Grounding component tests and M1 E1/E3 |
+| `GroundingFull` | M1 candidate component | E1 fused grounding candidate approved as M2 default input for the recorded ORT CUDA profile; not a shipped artifact. | M1 E1 harness and decision record |
+| `GroundingFullFeatureOnly` | M1 candidate component | E2 consumer that recomputes the required position tensor for the optional feature-only boundary. | M1 E2 harness and decision record |
+| `GroundingQueryCore` / `GroundingMaskSelectedK` | M1 candidate components | E3 policy cut after final all-query interaction. Fixed K and `valid_mask`; large continuation remains device-resident. | M1 E3 harness and decision record |
 | `DetectorEncoderDecoder` | Internal component | Overlaps grounding responsibilities and remains an internal compatibility/test surface pending responsibility cleanup. | Detector component tests |
 | `InteractiveImageEmbed` | Internal component | Mixes image feature projection with initial/no-memory conditioning; M3 will separate the logical contracts. | Interactive export tests |
 | `PromptEncode` | Test-only fixture | Fixed tiny/default point contract used for unit export coverage. It is not the production prompt encoder artifact. | Prompt interactive export tests |
@@ -26,8 +31,7 @@ coverage is a component-quality gate, not a public artifact release list.
 
 ## Planned canonical components
 
-Names such as `VisionTrunk`, `DetectorNeck`, `GroundingQueryCore`,
-`GroundingMaskSelectedK`, `InteractiveFeatureProject`,
+Names such as `VisionTrunk`, `DetectorNeck`, `InteractiveFeatureProject`,
 `InitialNoMemoryCondition`, `BaseTrackerPreview`, `MemoryEncodeSingle`, `Mux`,
 `Demux`, `TrackPropagateMux16` and `MemoryEncodeMux16` are architectural
 component names. They become code and fixtures in the milestone that needs

@@ -16,9 +16,11 @@ DEFAULT_PLAN_ID = "sam3_base_image_pcs_text_ortcuda_v1"
 SELECTED_K32_PLAN_ID = "sam3_base_image_pcs_text_ortcuda_selected_k32_v1"
 SPLIT_PLAN_ID = "sam3_base_image_pcs_text_ortcuda_split_v1"
 INTERACTIVE_PLAN_ID = "sam3_base_interactive_image_pvs_ortcuda_v1"
+BASE_VIDEO_PLAN_ID = "sam3_base_video_tracking_ortcuda_v1"
 IMAGE_PCS_PLAN_IDS = frozenset({DEFAULT_PLAN_ID, SELECTED_K32_PLAN_ID, SPLIT_PLAN_ID})
 INTERACTIVE_PLAN_IDS = frozenset({INTERACTIVE_PLAN_ID})
-SUPPORTED_PLAN_IDS = IMAGE_PCS_PLAN_IDS | INTERACTIVE_PLAN_IDS
+BASE_VIDEO_PLAN_IDS = frozenset({BASE_VIDEO_PLAN_ID})
+SUPPORTED_PLAN_IDS = IMAGE_PCS_PLAN_IDS | INTERACTIVE_PLAN_IDS | BASE_VIDEO_PLAN_IDS
 
 
 class ManifestError(RuntimeError):
@@ -281,6 +283,8 @@ def resolve_plan(bundle_dir: str | Path, plan_id: str) -> ResolvedPlan:
 
 __all__ = [
     "CapabilityError",
+    "BASE_VIDEO_PLAN_ID",
+    "BASE_VIDEO_PLAN_IDS",
     "DEFAULT_PLAN_ID",
     "IMAGE_PCS_PLAN_IDS",
     "INTERACTIVE_PLAN_ID",

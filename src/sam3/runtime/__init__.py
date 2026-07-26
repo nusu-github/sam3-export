@@ -1,6 +1,19 @@
 """Host-only postprocessing, association, and video I/O utilities."""
 
 from .associate_det_trk import associate_det_trk
+from .base_video import (
+    BaseVideoSession,
+    ObjectStateError,
+    PreviewHandle,
+    PreviewHandleError,
+    StateCapacityError,
+    VideoFramePrediction,
+    VideoHandle,
+    VideoPrediction,
+    VideoPreview,
+    VideoStateError,
+    create_video_session,
+)
 from .connected_components import connected_components
 from .image_pcs import (
     ImageHandle,
@@ -20,6 +33,7 @@ from .interactive_image import (
     create_interactive_session,
 )
 from .manifest import (
+    BASE_VIDEO_PLAN_ID,
     CapabilityError,
     LegacyManifestError,
     ManifestError,
@@ -31,6 +45,9 @@ from .video_io import list_jpeg_frames, load_video_frames_from_jpg
 
 __all__ = [
     "associate_det_trk",
+    "BaseVideoSession",
+    "BASE_VIDEO_PLAN_ID",
+    "create_video_session",
     "connected_components",
     "create_image_session",
     "create_interactive_session",
@@ -41,6 +58,9 @@ __all__ = [
     "InteractivePrediction",
     "InteractivePredictOptions",
     "InteractivePrompt",
+    "ObjectStateError",
+    "PreviewHandle",
+    "PreviewHandleError",
     "LegacyManifestError",
     "ManifestError",
     "mask_iou",
@@ -53,6 +73,12 @@ __all__ = [
     "PromptHandle",
     "SessionClosedError",
     "SessionStateError",
+    "StateCapacityError",
+    "VideoFramePrediction",
+    "VideoHandle",
+    "VideoPrediction",
+    "VideoPreview",
+    "VideoStateError",
     "list_jpeg_frames",
     "load_video_frames_from_jpg",
 ]

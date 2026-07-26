@@ -612,7 +612,7 @@ def validate_bundle(bundle_dir: Path, checkpoint: Path) -> dict[str, object]:
     hashes = {
         record["path"]: record["digest"]["value"]
         for record in resolved.manifest["files"]
-        if record["role"] in {"model", "external-data"}
+        if record["role"] in {"graph", "external-data"}
     }
     passed = official_local["status"] == "pass" and public["status"] == "pass"
     return {

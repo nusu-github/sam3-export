@@ -8,6 +8,7 @@ from pathlib import Path
 import platform
 import statistics
 import subprocess
+import tempfile
 import time
 from typing import Any
 
@@ -67,6 +68,34 @@ def _percentile(values: list[float], fraction: float) -> float:
     return ordered[min(len(ordered) - 1, round((len(ordered) - 1) * fraction))]
 
 
+def _validate_no_internal_d2h(bundle_dir: Path) -> dict[str, list[str]]:
+    import onnx
+    import onnxruntime as ort
+
+    result: dict[str, list[str]] = {}
+    with tempfile.TemporaryDirectory(prefix="sam3-m3-ort-") as temp_dir:
+        for graph_path in sorted((bundle_dir / "graphs").glob("*.onnx")):
+            optimized = Path(temp_dir) / graph_path.name
+            options = ort.SessionOptions()
+            options.optimized_model_filepath = str(optimized)
+            options.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
+            ort.InferenceSession(
+                str(graph_path),
+                sess_options=options,
+                providers=["CUDAExecutionProvider", "CPUExecutionProvider"],
+            )
+            graph = onnx.load(optimized, load_external_data=False)
+            copies = [
+                node.name for node in graph.graph.node if node.op_type == "MemcpyToHost"
+            ]
+            if copies:
+                raise RuntimeError(
+                    f"internal D2H is forbidden for {graph_path.name}: {copies}"
+                )
+            result[graph_path.name] = copies
+    return result
+
+
 def validate_bundle(bundle_dir: Path) -> dict[str, Any]:
     resolved = validate_manifest_package(
         bundle_dir / "manifests" / f"{INTERACTIVE_PLAN_ID}.json",
@@ -79,6 +108,7 @@ def validate_bundle(bundle_dir: Path) -> dict[str, Any]:
     export_report = json.loads(
         (bundle_dir / "reports/export_report.json").read_text(encoding="utf-8")
     )
+    internal_d2h = _validate_no_internal_d2h(bundle_dir)
     image = Image.open(bundle_dir / "fixtures/images/truck.jpg").convert("RGB")
     session = create_interactive_session(INTERACTIVE_PLAN_ID, bundle_dir=bundle_dir)
     cases: list[dict[str, Any]] = []
@@ -246,6 +276,7 @@ def validate_bundle(bundle_dir: Path) -> dict[str, Any]:
         "cache_residency_and_copies": {
             "image_features": "three CUDA OrtValues retained through every prediction",
             "fallback": None,
+            "internal_memcpy_to_host_nodes": internal_d2h,
             "fixture_counters": fixture_counters,
             "d2h_policy": "scores and final low-resolution logits only",
             "h2d_policy": "preprocessed image once; fixed prompt tensors per prediction",

@@ -37,13 +37,13 @@ constant. Fusion is selected because the internal projection/conditioning
 boundary has no independent lifetime, fan-out, host policy or backend
 compatibility reason in this profile.
 
-The three packaged graph pairs total 939,728,084 bytes:
+The three packaged graph pairs total 939,718,392 bytes:
 
 | Artifact | ONNX + external data bytes |
 |---|---:|
 | `interactive-image-encode-initial` | 921,829,924 |
 | `interactive-predict-multimask3` | 8,922,022 |
-| `interactive-predict-single1` | 8,976,138 |
+| `interactive-predict-single1` | 8,966,446 |
 
 Official eager and local eager image features were exactly equal. Across the
 zero-point, one-point, box, 16-point-plus-box, mask-only, mixed and repeated
@@ -57,8 +57,8 @@ The ORT CUDA/Public API gate retained all three image features as CUDA
 with nine session launches, 8,752,912 H2D bytes and 4,644,920 D2H bytes; D2H
 was exactly the final scores and low-resolution logits. The repeated-click
 trace used one image encode and two predictions and launched zero memory
-encodes or commits. ORT median/p95 prediction latency was 8.909/91.372 ms. The
-stage-boundary device-used samples observed 5,918,162,944 bytes at peak and a
+encodes or commits. ORT median/p95 prediction latency was 5.530/86.931 ms. The
+stage-boundary device-used samples observed 8,723,103,744 bytes at peak and a
 3,514,826,752-byte increase from the pre-session sample; these device-level
 observations are not portable capacity requirements.
 

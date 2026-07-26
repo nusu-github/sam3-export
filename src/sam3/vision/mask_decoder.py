@@ -251,16 +251,14 @@ class MaskDecoder(nn.Module):
     ) -> tuple[Float[Tensor, "b 1 h w"], Float[Tensor, "b 1"]]:
         multimask_logits = all_mask_logits[:, 1:, :, :]
         multimask_iou_scores = all_iou_scores[:, 1:]
-        best_scores_inds = torch.argmax(multimask_iou_scores, dim=-1)
-        batch_inds = torch.arange(
-            multimask_iou_scores.size(0), device=all_iou_scores.device
+        best_scores_inds = torch.argmax(multimask_iou_scores, dim=-1, keepdim=True)
+        best_multimask_iou_scores = torch.gather(
+            multimask_iou_scores, 1, best_scores_inds
         )
-        best_multimask_logits = multimask_logits[
-            batch_inds, best_scores_inds
-        ].unsqueeze(1)
-        best_multimask_iou_scores = multimask_iou_scores[
-            batch_inds, best_scores_inds
-        ].unsqueeze(1)
+        mask_indices = best_scores_inds[:, :, None, None].expand(
+            -1, -1, multimask_logits.shape[-2], multimask_logits.shape[-1]
+        )
+        best_multimask_logits = torch.gather(multimask_logits, 1, mask_indices)
 
         singlemask_logits = all_mask_logits[:, 0:1, :, :]
         singlemask_iou_scores = all_iou_scores[:, 0:1]

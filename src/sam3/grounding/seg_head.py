@@ -162,8 +162,8 @@ class SegmentationHead(nn.Module):
 
     @property
     def device(self) -> torch.device:
-        self._device = getattr(self, "_device", None) or next(self.parameters()).device
-        return self._device
+        cached = getattr(self, "_device", None)
+        return cached if cached is not None else next(self.parameters()).device
 
     def to(self, *args, **kwargs):  # type: ignore[override]
         self._device = None

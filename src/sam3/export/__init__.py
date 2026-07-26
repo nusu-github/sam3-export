@@ -18,7 +18,16 @@ from .contracts import (
     vision_output_to_flat,
 )
 from .detector import DetectorEncoderDecoder
-from .grounding import GroundingDecode, GroundingEncode
+from .grounding import (
+    GroundingDecode,
+    GroundingEncode,
+    GroundingEncodeTextOnly,
+    GroundingFull,
+    GroundingFullFeatureOnly,
+    GroundingMaskSelectedK,
+    GroundingQueryCore,
+    TextOnlyPromptEncode,
+)
 from .interactive_decode import (
     INTERACTIVE_NUM_MASKS,
     InteractiveDecode,
@@ -35,7 +44,7 @@ from .prompt_encode import (
 )
 from .text_tower import TextTower, TextTowerSpec
 from .tracker_step import TrackerStep
-from .vision_tower import VisionTower, VisionTowerFlat
+from .vision_tower import VisionTower, VisionTowerFlat, VisionTowerProfiled
 
 __all__ = [
     "FLAT_VISION_KEYS_SAM2",
@@ -46,6 +55,7 @@ __all__ = [
     "VISION_SPATIAL",
     "VisionTower",
     "VisionTowerFlat",
+    "VisionTowerProfiled",
     "VisionTowerOutput",
     "VisionTowerSpec",
     "flat_vision_keys",
@@ -66,7 +76,13 @@ __all__ = [
     "TextTowerSpec",
     "InteractiveImageEmbed",
     "GroundingEncode",
+    "GroundingEncodeTextOnly",
     "GroundingDecode",
+    "GroundingFull",
+    "GroundingFullFeatureOnly",
+    "GroundingMaskSelectedK",
+    "GroundingQueryCore",
+    "TextOnlyPromptEncode",
     "MemoryEncode",
     "TrackerStep",
 ]

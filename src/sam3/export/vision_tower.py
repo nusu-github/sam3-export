@@ -91,4 +91,24 @@ class VisionTowerFlat(nn.Module):
         return self._tower.forward_flat(pixel_values, validate=False)
 
 
-__all__ = ["VisionTower", "VisionTowerFlat"]
+class VisionTowerProfiled(nn.Module):
+    """M1 E2 export view over the three detector levels after scalp."""
+
+    def __init__(self, tower: nn.Module, profile: str) -> None:
+        super().__init__()
+        if profile not in {"full", "feature-only", "required-position-only"}:
+            raise ValueError(f"unknown vision output profile: {profile}")
+        self.tower = tower
+        self.profile = profile
+
+    def forward(self, pixel_values: Tensor) -> tuple[Tensor, ...]:
+        values = self.tower(pixel_values)
+        features = values[:3]
+        if self.profile == "full":
+            return features + values[3:6]
+        if self.profile == "required-position-only":
+            return features + (values[5],)
+        return features
+
+
+__all__ = ["VisionTower", "VisionTowerFlat", "VisionTowerProfiled"]

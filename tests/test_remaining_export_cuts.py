@@ -10,6 +10,10 @@ from torch.export import export
 from sam3.export import (
     GroundingDecode,
     GroundingEncode,
+    GroundingFull,
+    GroundingFullFeatureOnly,
+    GroundingMaskSelectedK,
+    GroundingQueryCore,
     InteractiveImageEmbed,
     MemoryEncode,
     TextTower,
@@ -188,6 +192,65 @@ def test_grounding_encode_decode_export() -> None:
     assert boxes.shape == (batch, 3, 4)
     assert masks.shape == (batch, 3, hw, hw)
     assert presence.shape == (batch, 1)
+
+    full = GroundingFull(encoder_cut, decode_cut)
+    full_outputs = _roundtrip(
+        full,
+        ((features,), (positions,), (image_mask,), text_memory, text_mask),
+    )
+    for expected, actual in zip((logits, boxes, masks, presence), full_outputs):
+        torch.testing.assert_close(expected, actual, rtol=1e-3, atol=1e-3)
+
+    feature_only = GroundingFullFeatureOnly(full, nn.Identity())
+    feature_only_outputs = _roundtrip(
+        feature_only,
+        ((features,), (image_mask,), text_memory, text_mask),
+    )
+    direct_feature_position = full(
+        (features,), (features,), (image_mask,), text_memory, text_mask
+    )
+    for expected, actual in zip(direct_feature_position, feature_only_outputs):
+        torch.testing.assert_close(expected, actual, rtol=1e-3, atol=1e-3)
+
+    query_core = GroundingQueryCore(decoder, scorer)
+    core_logits, core_boxes, core_presence, query_embeddings = _roundtrip(
+        query_core,
+        (
+            features,
+            memory,
+            pos,
+            padding,
+            starts,
+            shapes,
+            ratios,
+            text_after,
+            text_mask,
+        ),
+    )
+    torch.testing.assert_close(logits, core_logits, rtol=1e-3, atol=1e-3)
+    torch.testing.assert_close(boxes, core_boxes, rtol=1e-3, atol=1e-3)
+    torch.testing.assert_close(presence, core_presence, rtol=1e-3, atol=1e-3)
+
+    selected_indices = torch.tensor([[2, 0], [1, 0]], device=DEVICE)
+    valid_mask = torch.tensor([[True, False], [True, False]], device=DEVICE)
+    mask_selected = GroundingMaskSelectedK(segmentation)
+    (selected_masks,) = _roundtrip(
+        mask_selected,
+        (
+            (features,),
+            memory,
+            text_after,
+            text_mask,
+            query_embeddings,
+            selected_indices,
+            valid_mask,
+        ),
+    )
+    expected_selected = torch.stack((masks[0, 2], masks[1, 1])).unsqueeze(1)
+    torch.testing.assert_close(
+        selected_masks[:, :1], expected_selected, rtol=1e-3, atol=1e-3
+    )
+    assert torch.count_nonzero(selected_masks[:, 1:]) == 0
 
 
 @torch.no_grad()

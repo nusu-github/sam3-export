@@ -28,3 +28,6 @@ artifacts/
 
 # Worker session logs (keep reports)
 docs/worker_logs/
+
+# Local M1 experiment artifacts and reports
+.m1-work/

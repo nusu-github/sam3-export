@@ -1,5 +1,10 @@
 """Checkpoint loading helpers for SAM3 real weights."""
 
+from .base_video import (
+    BaseVideoModules,
+    base_video_variant_from_checkpoint,
+    build_base_video_modules,
+)
 from .load_sam3 import (
     DEFAULT_BPE_PATH,
     DEFAULT_SAM3_CHECKPOINT,
@@ -29,6 +34,9 @@ from .load_sam3 import (
 )
 
 __all__ = [
+    "BaseVideoModules",
+    "base_video_variant_from_checkpoint",
+    "build_base_video_modules",
     "DEFAULT_SAM3_CHECKPOINT",
     "DEFAULT_BPE_PATH",
     "SAM3_HF_REPO",

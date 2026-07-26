@@ -27,10 +27,10 @@ output policy and CUDA-resident handoff.
 
 | Candidate | Median / p95 (ms) | Peak / persistent VRAM (bytes) | D2H / H2D |
 |---|---:|---:|---:|
-| B4 | 283.700 / 283.846 | 2,709,979,136 / 1,212,967,424 | 0 / 0 |
-| B8 | 569.912 / 571.040 | 4,285,731,328 / 1,347,023,360 | 0 / 0 |
+| B4 | 284.273 / 285.006 | 2,710,011,904 / 1,212,967,424 | 0 / 0 |
+| B8 | 570.353 / 570.467 | 4,285,731,328 / 1,347,023,360 | 0 / 0 |
 
-B8 was 0.443% slower than two B4 launches, rather than at least 15% faster.
+B8 was 0.318% slower than two B4 launches, rather than at least 15% faster.
 Its peak/B4 ratio was 1.581, within the 1.75 memory ceiling, but the latency
 gate failed; B4 is therefore selected. Public validation confirmed tracker
 launch counts of 1, 1 and 2 for 1, 4 and 5 objects respectively, with one
@@ -40,10 +40,10 @@ frame encode and one commit per active object.
 
 | Candidate | Median / p95 (ms) | Peak / persistent VRAM (bytes) | Intermediate copies | Launches |
 |---|---:|---:|---:|---:|
-| split preview + commit | 294.527 / 295.128 | 2,710,536,192 / 1,212,967,424 | 0 D2H / 0 H2D | 2 |
-| fused step + commit | 295.071 / 297.109 | 2,710,536,192 / 1,212,967,424 | 0 D2H / 0 H2D | 1 |
+| split preview + commit | 295.177 / 295.934 | 2,710,536,192 / 1,212,967,424 | 0 D2H / 0 H2D | 2 |
+| fused step + commit | 295.467 / 296.813 | 2,710,536,192 / 1,212,967,424 | 0 D2H / 0 H2D | 1 |
 
-The fused/split median ratio was 1.00185 and the peak ratio was 1.0, within
+The fused/split median ratio was 1.00098 and the peak ratio was 1.0, within
 the 5% latency and 1.25x memory gates. Prediction/memory parity and CUDA
 residency also passed, so fused is the shipped steady-state recipe. Correction
 retains the split policy boundary because the user may preview repeatedly and
@@ -76,6 +76,7 @@ PYTHONPATH=src python scripts/export_base_video_v2.py \
   --official-repo ../sam3 --checkpoint /path/to/sam3.pt
 ```
 
-The ignored bundle owns exact artifact sizes/hashes, graph signatures,
+The selected graph/external-data pairs total 1,129,918,974 bytes. The ignored
+bundle owns exact per-file sizes/hashes, graph signatures,
 decision JSON, provenance, environment and copy/launch counters. Candidate
 work remains under `.m4-work/` and is not part of the selected bundle.

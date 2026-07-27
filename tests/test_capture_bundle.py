@@ -43,6 +43,7 @@ def test_saved_exported_program_round_trip_and_metadata(tmp_path: Path) -> None:
     loaded = torch.export.load(path)
     torch.testing.assert_close(loaded.module()(values), values * 2)
     assert metadata["program_path"] == "capture/scale.pt2"
+    assert metadata["serialization_round_trip"] == "pass"
     assert metadata["semantic_inputs"] == ["values"]
     assert metadata["semantic_outputs"] == ["scaled-values"]
     assert metadata["range_constraints"]

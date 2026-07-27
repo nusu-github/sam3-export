@@ -1,4 +1,4 @@
-"""Build the M6 AOTInductor CUDA evaluation bundle from canonical M2 captures."""
+"""Build the M6 direct ExportedProgram CUDA evaluation bundle."""
 
 from __future__ import annotations
 
@@ -16,84 +16,31 @@ from export_image_pcs_v2 import _copy_file, _file_id, _file_record
 import torch
 
 from sam3.runtime.manifest import (
-    AOTINDUCTOR_PLAN_ID,
     DEFAULT_PLAN_ID,
+    EXPORTED_PROGRAM_PLAN_ID,
     validate_manifest_package,
 )
 
 ROLES = ("detector-image-encode", "text-encode", "grounding-full")
-SCOPE_LABEL = "SAM3 base text-only image PCS / AOTInductor CUDA evaluation v1"
+SCOPE_LABEL = "SAM3 base text-only image PCS / ExportedProgram CUDA evaluation v1"
 
 
 def _write_card(path: Path) -> None:
     path.write_text(
-        """# SAM3 base text-only image PCS / AOTInductor CUDA evaluation v1
+        """# SAM3 base text-only image PCS / ExportedProgram CUDA evaluation v1
 
-This M6 candidate is compiled from the saved canonical `ExportedProgram` files
-of the shipped M2 fused semantic plan. It uses the same Public API and semantic
-tensor/cache contract as the ORT CUDA default, but it is not the default and
-does not imply support for interactive image, video, SAM3.1, CPU, or the M2
-selected-K/split plans.
+This M6 candidate executes the saved canonical `ExportedProgram` files with
+PyTorch ATen CUDA. It preserves the M2 fused plan's Public API and semantic
+tensor/cache contract. It is optional, does not replace the ORT CUDA default,
+and does not imply support for other capabilities or profiles.
 """,
         encoding="utf-8",
     )
 
 
-def _capture_operator_summary(program: torch.export.ExportedProgram) -> dict[str, Any]:
-    call_targets = sorted(
-        {str(node.target) for node in program.graph.nodes if node.op == "call_function"}
-    )
-    non_aten = [
-        target
-        for target in call_targets
-        if not target.startswith(("aten.", "prims.", "operator."))
-    ]
-    return {
-        "call_function_targets": call_targets,
-        "non_aten_targets": non_aten,
-    }
-
-
-def _compile_roles(
-    source_bundle: Path, staging: Path
-) -> tuple[dict[str, Any], dict[str, str]]:
-    reports: dict[str, Any] = {}
-    paths: dict[str, str] = {}
-    for role in ROLES:
-        capture_relative = f"capture/{role}.pt2"
-        program = torch.export.load(source_bundle / capture_relative)
-        package_relative = f"packages/{role}.pt2"
-        package_path = staging / package_relative
-        package_path.parent.mkdir(parents=True, exist_ok=True)
-        compiled = torch._inductor.aoti_compile_and_package(  # type: ignore[attr-defined]
-            program,
-            package_path=str(package_path),
-            inductor_configs={"emulate_precision_casts": True},
-        )
-        if Path(compiled).resolve() != package_path.resolve():
-            raise RuntimeError(f"AOTInductor wrote an unexpected package: {compiled}")
-        paths[role] = package_relative
-        reports[role] = {
-            "status": "compiled",
-            "canonical_capture": capture_relative,
-            "package": package_relative,
-            "package_size_bytes": package_path.stat().st_size,
-            "operators": _capture_operator_summary(program),
-            "compiler_fallback_nodes": [],
-            "compiler_fallback_evidence": (
-                "aoti_compile_and_package completed without an unsupported-op error"
-            ),
-        }
-    return reports, paths
-
-
-def _candidate_manifest(
-    source: dict[str, Any],
-    staging: Path,
-    package_paths: dict[str, str],
-) -> dict[str, Any]:
+def _manifest(source: dict[str, Any], staging: Path) -> dict[str, Any]:
     manifest = deepcopy(source)
-    manifest["manifest_id"] = "sam3-image-pcs-aotinductor-m6-evaluation-v2"
+    manifest["manifest_id"] = "sam3-image-pcs-exported-program-m6-evaluation-v2"
     manifest["scope"].update(
         {
             "lifecycle": "candidate",
@@ -111,11 +58,11 @@ def _candidate_manifest(
             ],
         }
     )
-    manifest["plan"]["id"] = AOTINDUCTOR_PLAN_ID
+    manifest["plan"]["id"] = EXPORTED_PROGRAM_PLAN_ID
     manifest["backend"] = {
-        "kind": "aotinductor",
+        "kind": "exported-program",
         "target": "CUDA device 0",
-        "execution_provider": "TorchInductorCUDA",
+        "execution_provider": "PyTorchATenCUDA",
         "runtime_version": torch.__version__,
         "pytorch_version": torch.__version__,
         "exporter_version": torch.__version__,
@@ -125,16 +72,14 @@ def _candidate_manifest(
     manifest["capture"]["exporter_version"] = torch.__version__
     for artifact in manifest["artifacts"]:
         role = artifact["role"]
-        package_relative = package_paths[role]
-        artifact["format"] = "aotinductor"
-        artifact["entry_file_ref"] = _file_id(package_relative)
+        capture_path = f"capture/{role}.pt2"
+        artifact["format"] = "exported-program"
+        artifact["entry_file_ref"] = _file_id(capture_path)
         artifact["external_data_file_refs"] = []
     for handoff in manifest["handoffs"]:
         handoff["mechanism"] = "CUDA torch.Tensor"
         handoff["fallback_plan_id"] = None
-
-    fixture = manifest["fixtures"][0]
-    fixture["parity"] = [
+    manifest["fixtures"][0]["parity"] = [
         {
             "stage": "official-to-local-eager",
             "status": "pass",
@@ -171,14 +116,6 @@ def export_bundle(source_bundle: Path, output_dir: Path) -> None:
         source_bundle / "manifests" / f"{DEFAULT_PLAN_ID}.json",
         expected_plan_id=DEFAULT_PLAN_ID,
     )
-    missing_capture = [
-        role for role in ROLES if not (source_bundle / f"capture/{role}.pt2").is_file()
-    ]
-    if missing_capture:
-        raise FileNotFoundError(
-            f"source M2 bundle lacks canonical captures: {missing_capture}"
-        )
-
     output_dir.parent.mkdir(parents=True, exist_ok=True)
     staging = Path(
         tempfile.mkdtemp(prefix=f".{output_dir.name}-", dir=output_dir.parent)
@@ -197,30 +134,33 @@ def export_bundle(source_bundle: Path, output_dir: Path) -> None:
         for image in sorted((source_bundle / "fixtures/images").glob("*")):
             _copy_file(image, staging / "fixtures/images" / image.name)
         for role in ROLES:
-            _copy_file(
-                source_bundle / f"capture/{role}.pt2",
-                staging / f"capture/{role}.pt2",
-            )
-        _copy_file(Path("LICENSE"), staging / "LICENSE")
+            source_capture = source_bundle / f"capture/{role}.pt2"
+            if not source_capture.is_file():
+                raise FileNotFoundError(f"canonical capture is missing: {role}")
+            _copy_file(source_capture, staging / f"capture/{role}.pt2")
         _write_card(staging / "README.md")
-
-        compile_report, package_paths = _compile_roles(source_bundle, staging)
         export_report = {
-            "format": "sam3-image-pcs-m6-aotinductor-export-report-v1",
-            "status": "compiled",
+            "format": "sam3-image-pcs-m6-exported-program-export-report-v1",
+            "status": "captured",
             "source_plan_id": DEFAULT_PLAN_ID,
-            "plan_id": AOTINDUCTOR_PLAN_ID,
+            "plan_id": EXPORTED_PROGRAM_PLAN_ID,
             "torch_version": torch.__version__,
-            "canonical_source": "saved M2 ExportedProgram files",
-            "roles": compile_report,
+            "roles": {
+                role: {
+                    "status": "saved",
+                    "path": f"capture/{role}.pt2",
+                    "size_bytes": (staging / f"capture/{role}.pt2").stat().st_size,
+                }
+                for role in ROLES
+            },
         }
         (staging / "reports/export_report.json").write_text(
             json.dumps(export_report, indent=2) + "\n", encoding="utf-8"
         )
-        (staging / "reports/m6_aotinductor_validation.json").write_text(
+        (staging / "reports/m6_exported_program_validation.json").write_text(
             json.dumps(
                 {
-                    "format": "sam3-image-pcs-m6-aotinductor-validation-v1",
+                    "format": "sam3-image-pcs-m6-exported-program-validation-v1",
                     "status": "pending",
                 },
                 indent=2,
@@ -229,20 +169,23 @@ def export_bundle(source_bundle: Path, output_dir: Path) -> None:
             encoding="utf-8",
         )
         (staging / "manifests").mkdir()
-        manifest = _candidate_manifest(source.manifest, staging, package_paths)
-        manifest_path = staging / "manifests" / f"{AOTINDUCTOR_PLAN_ID}.json"
+        manifest_path = staging / "manifests" / f"{EXPORTED_PROGRAM_PLAN_ID}.json"
         manifest_path.write_text(
-            json.dumps(manifest, indent=2) + "\n", encoding="utf-8"
+            json.dumps(_manifest(source.manifest, staging), indent=2) + "\n",
+            encoding="utf-8",
         )
-        validate_manifest_package(manifest_path, expected_plan_id=AOTINDUCTOR_PLAN_ID)
+        validate_manifest_package(
+            manifest_path, expected_plan_id=EXPORTED_PROGRAM_PLAN_ID
+        )
         subprocess.run(
             [
                 sys.executable,
                 str(Path(__file__).with_name("validate_image_pcs_aotinductor.py")),
                 "--bundle-dir",
                 str(staging),
+                "--plan-id",
+                EXPORTED_PROGRAM_PLAN_ID,
                 "--update-report",
-                "--record-failure",
             ],
             check=True,
         )
@@ -262,7 +205,7 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--output-dir",
         type=Path,
-        default=Path("artifacts/sam3-image-pcs-aotinductor-v2"),
+        default=Path("artifacts/sam3-image-pcs-exported-program-v2"),
     )
     return parser.parse_args()
 

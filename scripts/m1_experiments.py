@@ -337,7 +337,8 @@ def _export_one(
     with torch.no_grad():
         eager = _as_tuple(module(*args))
         exported_program = export(module, args, strict=False)
-        ep_outputs = _as_tuple(exported_program.module()(*args))
+        capture_program = exported_program.run_decompositions()
+        ep_outputs = _as_tuple(capture_program.module()(*args))
     ep_parity = _parity(eager, ep_outputs)
     capture: dict[str, Any] | None = None
     if capture_path is not None:
@@ -346,7 +347,7 @@ def _export_one(
         from capture_utils import save_exported_program
 
         capture = save_exported_program(
-            exported_program,
+            capture_program,
             capture_path,
             bundle_path=capture_bundle_path,
             input_names=input_names,

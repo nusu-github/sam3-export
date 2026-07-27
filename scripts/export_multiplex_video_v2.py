@@ -340,7 +340,8 @@ def _export_one(
             dynamic_shapes=dynamic_shapes,
             strict=False,
         )
-        exported_outputs = exported.module()(*cloned)
+        capture_program = exported.run_decompositions()
+        exported_outputs = capture_program.module()(*cloned)
     parity = _parity(
         eager if isinstance(eager, tuple) else (eager,),
         exported_outputs
@@ -354,7 +355,7 @@ def _export_one(
         from capture_utils import save_exported_program
 
         capture = save_exported_program(
-            exported,
+            capture_program,
             capture_path,
             bundle_path=capture_bundle_path,
             input_names=input_names,
@@ -419,6 +420,7 @@ def _export_candidate(
     *,
     dynamic: bool,
     bucket_count: int,
+    capture_programs: bool = True,
 ) -> dict[str, Any]:
     target.mkdir(parents=True, exist_ok=True)
     propagation_args, scatter_args = _sample_state(
@@ -477,8 +479,16 @@ def _export_candidate(
             PROPAGATION_INPUTS,
             PROPAGATION_OUTPUTS,
             dynamic_kind=kind("propagation"),
-            capture_path=target / "capture" / f"{Path(names['propagation']).stem}.pt2",
-            capture_bundle_path=(f"capture/{Path(names['propagation']).stem}.pt2"),
+            capture_path=(
+                target / "capture" / f"{Path(names['propagation']).stem}.pt2"
+                if capture_programs
+                else None
+            ),
+            capture_bundle_path=(
+                f"capture/{Path(names['propagation']).stem}.pt2"
+                if capture_programs
+                else None
+            ),
         ),
         "memory": _export_one(
             memory_module,
@@ -487,8 +497,16 @@ def _export_candidate(
             MEMORY_INPUTS,
             MEMORY_OUTPUTS,
             dynamic_kind=kind("memory"),
-            capture_path=target / "capture" / f"{Path(names['memory']).stem}.pt2",
-            capture_bundle_path=f"capture/{Path(names['memory']).stem}.pt2",
+            capture_path=(
+                target / "capture" / f"{Path(names['memory']).stem}.pt2"
+                if capture_programs
+                else None
+            ),
+            capture_bundle_path=(
+                f"capture/{Path(names['memory']).stem}.pt2"
+                if capture_programs
+                else None
+            ),
         ),
         "scatter": _export_one(
             scatter_module,
@@ -497,8 +515,16 @@ def _export_candidate(
             SCATTER_INPUTS,
             SCATTER_OUTPUTS,
             dynamic_kind=kind("scatter"),
-            capture_path=target / "capture" / f"{Path(names['scatter']).stem}.pt2",
-            capture_bundle_path=f"capture/{Path(names['scatter']).stem}.pt2",
+            capture_path=(
+                target / "capture" / f"{Path(names['scatter']).stem}.pt2"
+                if capture_programs
+                else None
+            ),
+            capture_bundle_path=(
+                f"capture/{Path(names['scatter']).stem}.pt2"
+                if capture_programs
+                else None
+            ),
         ),
     }
 
@@ -1455,6 +1481,7 @@ def export_bundle(
                     fixed_dir,
                     dynamic=False,
                     bucket_count=1,
+                    capture_programs=False,
                 ),
                 "bucket2": _export_candidate(
                     modules,
@@ -1463,6 +1490,7 @@ def export_bundle(
                     fixed_dir,
                     dynamic=False,
                     bucket_count=2,
+                    capture_programs=False,
                 ),
             }
             dynamic_report = _export_candidate(
@@ -1472,6 +1500,7 @@ def export_bundle(
                 dynamic_dir,
                 dynamic=True,
                 bucket_count=2,
+                capture_programs=False,
             )
         decision, decision_record = _decide_profile(
             fixed_dir,
@@ -1488,9 +1517,20 @@ def export_bundle(
         )
         profile_id = decision_record["Applicable profiles"][0]
         selected_roles = dict(COMMON_GRAPH_NAMES)
+        if fixed_dir.exists():
+            shutil.rmtree(fixed_dir)
+        if dynamic_dir.exists():
+            shutil.rmtree(dynamic_dir)
         if decision == "bounded-dynamic":
             selected = dynamic_dir
-            selected_candidate_reports = dynamic_report
+            selected_candidate_reports = _export_candidate(
+                modules,
+                encoded,
+                prompt,
+                selected,
+                dynamic=True,
+                bucket_count=2,
+            )
             for operation, filename in _candidate_names(True).items():
                 role = f"multiplex-{_operation_role(operation)}"
                 selected_roles[role] = filename
@@ -1503,7 +1543,14 @@ def export_bundle(
                 )
         else:
             selected = fixed_dir
-            selected_candidate_reports = fixed_report["bucket1"]
+            selected_candidate_reports = _export_candidate(
+                modules,
+                encoded,
+                prompt,
+                selected,
+                dynamic=False,
+                bucket_count=1,
+            )
             for operation, filename in _candidate_names(False, 1).items():
                 role = f"multiplex-{_operation_role(operation)}-bucket1"
                 selected_roles[role] = filename

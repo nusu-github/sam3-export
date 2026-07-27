@@ -41,10 +41,17 @@ def save_exported_program(
     """Save one canonical capture and return its manifest-owned metadata."""
 
     path.parent.mkdir(parents=True, exist_ok=True)
+    for name, value in list(program.constants.items()):
+        if isinstance(value, torch.Tensor) and not value.is_contiguous():
+            program.constants[name] = value.contiguous()
     torch.export.save(program, path)
+    loaded = torch.export.load(path)
+    if loaded.graph_signature != program.graph_signature:
+        raise RuntimeError(f"saved ExportedProgram signature changed on load: {path}")
     signature = program.graph_signature
     return {
         "program_path": bundle_path,
+        "serialization_round_trip": "pass",
         "capture_mode": mode,
         "semantic_inputs": input_names,
         "semantic_outputs": output_names,

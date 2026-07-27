@@ -225,7 +225,9 @@
         "capabilities"
       ],
       "properties": {
-        "kind": { "enum": ["onnx-runtime", "aotinductor"] },
+        "kind": {
+          "enum": ["onnx-runtime", "aotinductor", "exported-program"]
+        },
         "target": { "type": "string", "minLength": 1 },
         "execution_provider": { "type": "string", "minLength": 1 },
         "runtime_version": { "type": "string", "minLength": 1 },

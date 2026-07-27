@@ -17,6 +17,7 @@ from sam3.grounding.tokenizer_ve import SimpleTokenizer
 from sam3.runtime.manifest import (
     AOTINDUCTOR_PLAN_ID,
     DEFAULT_PLAN_ID,
+    EXPORTED_PROGRAM_PLAN_ID,
     IMAGE_PCS_PLAN_IDS,
     SELECTED_K32_PLAN_ID,
     SPLIT_PLAN_ID,
@@ -334,7 +335,11 @@ class _OrtCudaAdapter:
         text = text_cache
         if not isinstance(image, dict) or not isinstance(text, dict):
             raise TypeError("invalid ORT cache state")
-        if self._plan.plan_id in {DEFAULT_PLAN_ID, AOTINDUCTOR_PLAN_ID}:
+        if self._plan.plan_id in {
+            DEFAULT_PLAN_ID,
+            AOTINDUCTOR_PLAN_ID,
+            EXPORTED_PROGRAM_PLAN_ID,
+        }:
             return self._predict_default(image, text)
         if self._plan.plan_id == SPLIT_PLAN_ID:
             return self._predict_split(image, text)
@@ -418,6 +423,38 @@ class _AOTInductorCudaAdapter(_OrtCudaAdapter):
     def close(self) -> None:
         self._sessions.clear()
         self._constant_image_mask = None
+
+
+class _ExportedProgramCudaAdapter(_AOTInductorCudaAdapter):
+    """Execute the canonical captures directly with the semantic M2 ABI."""
+
+    def __init__(self, plan: ResolvedPlan) -> None:
+        if not torch.cuda.is_available():
+            raise CapabilityError("CUDA is unavailable for ExportedProgram")
+        self._plan = plan
+        self.counters = {
+            "image_encodes": 0,
+            "text_encodes": 0,
+            "session_launches": 0,
+            "d2h_bytes": 0,
+            "h2d_bytes": 0,
+            "mask_skips": 0,
+        }
+        self._artifacts = plan.artifacts_by_role
+        self._files = {
+            record["id"]: plan.bundle_dir / record["path"]
+            for record in plan.manifest["files"]
+        }
+        try:
+            self._sessions = {
+                role: torch.export.load(
+                    self._files[artifact["entry_file_ref"]]
+                ).module()
+                for role, artifact in self._artifacts.items()
+            }
+        except (OSError, RuntimeError) as exc:
+            raise CapabilityError("ExportedProgram could not be loaded") from exc
+        self._constant_image_mask = self._upload(np.zeros((1, 72, 72), dtype=np.bool_))
 
 
 _adapter_factory: Any = None
@@ -669,11 +706,12 @@ def create_image_session(plan_id: str, *, bundle_dir: str | Path) -> ImagePCSSes
         raise ManifestError(f"plan scope mismatch: {plan_id} is not image-pcs")
     factory = _adapter_factory
     if factory is None:
-        factory = (
-            _AOTInductorCudaAdapter
-            if resolved.manifest["backend"]["kind"] == "aotinductor"
-            else _OrtCudaAdapter
-        )
+        kind = resolved.manifest["backend"]["kind"]
+        factory = {
+            "aotinductor": _AOTInductorCudaAdapter,
+            "exported-program": _ExportedProgramCudaAdapter,
+            "onnx-runtime": _OrtCudaAdapter,
+        }[kind]
     adapter = factory(resolved)
     LOGGER.info(
         "created image PCS session plan_id=%s manifest_sha256=%s "

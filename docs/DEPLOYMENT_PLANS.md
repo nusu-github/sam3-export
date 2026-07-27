@@ -200,10 +200,28 @@ that cannot provide it dispatches to fused raw-200 `GroundingFull`, never by
 copying large continuation tensors through CPU/NumPy. See
 [the E3 record](decision-records/M1_E3_SELECTED_K.md).
 
-## Later plans
+## M6 backend bundles
 
-Additional backend bundles (M6) remain planned. M4 `BaseVideoStateV1` and M5
-`MultiplexStateV1` remain separate semantic ABIs.
+The semantic plan remains stable across backend bundles. Backend selection is a
+manifest/runtime concern and does not add backend tensors to the Public API.
+M4 `BaseVideoStateV1` and M5 `MultiplexStateV1` remain separate semantic ABIs.
+
+| Semantic plan | ORT CUDA | Direct `ExportedProgram` CUDA | AOTInductor CUDA |
+|---|---|---|---|
+| M2 image PCS fused default | shipped default; pass | evaluated optional candidate; pass | compiled, parity fail; rejected |
+| M2 selected-K32 | shipped optional; pass | not evaluated | not evaluated |
+| M2 corrected split | shipped fallback; pass | not evaluated | not evaluated |
+| M3 interactive image | shipped default; pass | canonical capture saved/load checked; execution not evaluated | not evaluated |
+| M4 base video | shipped default; pass | canonical capture saved/load checked; execution not evaluated | not evaluated |
+| M5 SAM3.1 Multiplex fixed B1 | shipped default; pass | canonical capture saved/load checked; execution not evaluated | not evaluated |
+
+Every public M2–M5 plan now owns saved-program references, graph signatures,
+range constraints, capture mode and fixture hash in its generated manifest.
+ORT release validators require CUDA IOBinding, device-resident intermediate
+handoffs and no undeclared CPU fallback. The M2 corrected split remains the
+explicit fused-plan fallback; no backend silently selects it. Measurement and
+adoption details are in
+[the M6 backend decision](decision-records/M6_BACKEND_BUNDLES.md).
 
 ## Decision and publication gates
 
@@ -213,7 +231,9 @@ Additional backend bundles (M6) remain planned. M4 `BaseVideoStateV1` and M5
 - A plan manifest identifies default, optional and fallback applicability per
   backend/profile. An unrecorded fallback is not permitted.
 - The M2 manifests, M3 interactive manifest, M4 base-video manifest and M5
-  Multiplex manifest passed schema/package validation and their CUDA/Public
-  API release validators; later plan changes require the same gate.
+  Multiplex manifest passed schema/package validation, canonical capture
+  save/load checks and their CUDA/Public API release validators.
+- A non-ONNX bundle is admitted only after the same fixture, semantic ABI and
+  end-to-end selection/mask gates pass. Compile success alone is insufficient.
 - The Host Runtime dispatches by public plan ID and resolved manifest; it does
   not expose backend tensor names in the Public API.

@@ -6,11 +6,13 @@ defines the machine-readable contract for a deployment **plan bundle**, not an
 individual logical component. It uses JSON Schema Draft 2020-12 and fixes
 `format` to `sam3-deployment-manifest-v2`.
 
-M2, M3 and M4 use this schema for fixed image PCS, interactive image and base
-video ORT CUDA plans. The current `sam3-split-onnx-v1` manifest remains a
-separate legacy format. Loaders dispatch on `format`; they must not treat v1 as
-a partial v2 document or invent missing provenance, policy, hash, cache or
-handoff values.
+M2 through M5 use this schema for image PCS, interactive image, base video and
+SAM3.1 Multiplex plans. M6 adds canonical `ExportedProgram` file references to
+each public plan and permits separately dispatched ORT CUDA, direct
+`ExportedProgram` CUDA and AOTInductor evaluation bundles. The current
+`sam3-split-onnx-v1` manifest remains a separate legacy format. Loaders dispatch
+on `format`; they must not treat v1 as a partial v2 document or invent missing
+provenance, policy, hash, cache or handoff values.
 
 ## Required blocks
 
@@ -24,7 +26,7 @@ handoff values.
 | `artifacts` / `execution` | Backend files and tensor bindings plus plan edges; backend tensor names remain bindings rather than semantic type names |
 | `caches` | Cached tensors, lifetime, versioned key parts, invalidation and state compatibility |
 | `handoffs` | Producer/consumer edge, tensor set, required/preferred/host-allowed residency mechanism and explicit fallback |
-| `capture` | Canonical capture kind/mode, PyTorch/exporter versions, constraints and graph-signature file |
+| `capture` | Canonical capture kind/mode, PyTorch/exporter versions, constraints, graph-signature file and saved-program file references |
 | `policies` | Explicit baked or Host Runtime ownership for selection, output, multimask, branch and related policy |
 | `fixtures` | Versioned owner, source/checkpoint, case inventory, aggregate hash and four-stage parity results |
 | `files` | Relative path, role, byte size and SHA-256 for every graph, external-data, tokenizer, capture and report file |
@@ -46,21 +48,26 @@ records so it has no self-hash cycle.
 
 The schema fixture under `tests/fixtures/manifest_v2/` is a minimal skeleton of
 the M2 fused default plan. It demonstrates structural validation only; the
-generated M2/M3/M4 bundle manifests and owned fixtures satisfy their release
+generated M2–M5 bundle manifests and owned fixtures satisfy their release
 gates.
 
 ## Validation layers
 
 JSON Schema validates the release blocks, main types, current vocabulary and
 hash form. The common package validator additionally checks unique IDs,
-artifact/file/tensor references, file existence/size/SHA-256, required CUDA
-IOBinding capabilities and named fallback-plan presence. M2, M3 and M4 adapters
-then check scope and declared input/output bindings against each ORT graph. It
-does not implement a general DAG executor or future-backend cross-rule matrix.
+artifact/file/tensor references, file existence/size/SHA-256, backend-specific
+CUDA capability declarations and named fallback-plan presence. ORT adapters
+then check scope and declared input/output bindings against each graph. The
+M6 direct `ExportedProgram` adapter loads only manifest-referenced captures and
+keeps the same semantic Public API. This validator does not implement a general
+DAG executor or an all-backend cross-rule matrix.
 
 Generated manifests live at `manifests/<plan-id>.json` in ignored release
 bundles. Their format is `sam3-deployment-manifest-v2` and contract version is
 `1.0.0`. Current profiles are `b1-1008-l32-q200-fp16` for image PCS,
 `b1-1008-p16-box1-mask288-fp16` for interactive image PVS, and
-`b4-1008-p16-box1-mask288-m10-ptr16-fp16` for base video. v1 remains
+`b4-1008-p16-box1-mask288-m10-ptr16-fp16` for base video, and
+`fixed-bucket1-dispatch1to2-1008-p16-mask288-m10-ptr16-fp16` for Multiplex.
+Saved programs are tied to the manifest's exact PyTorch/exporter version; they
+are not claimed as a version-independent interchange format. v1 remains
 separately dispatched and receives no inferred v2 metadata.

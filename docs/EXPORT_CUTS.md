@@ -19,7 +19,7 @@ logical component is not automatically a separately distributed artifact.
 | Backend/profile | ORT 1.27.0 CUDA EP + IOBinding; `fixed-bucket1-dispatch1to2-1008-p16-mask288-m10-ptr16-fp16` |
 | Package manifest | `sam3_1_multiplex_video_tracking_ortcuda_v1`, contract `1.0.0` |
 | Host boundary | RGB frame/prompt validation, public object lifecycle and assignment, fixed B1 dispatch 1–2 times, final object-ID ordering and mask conversion |
-| Exclusions | SAM3 base, text/geometry PCS, streaming, CPU fallback, unbounded dynamic buckets and M6 backend bundles |
+| Exclusions | SAM3 base, text/geometry PCS, streaming, CPU fallback and unbounded dynamic buckets |
 
 | Public artifact role | Short tensor I/O / boundary |
 |---|---|
@@ -128,8 +128,12 @@ of the draft v2 contract rather than retroactive claims about v1.
 
 ## Later artifacts are not shipped artifacts
 
-Additional backend/profile variants remain later milestones.
-Internal smoke wrappers do not make them shipped artifacts.
+The direct `ExportedProgram` CUDA image PCS bundle is an evaluated optional
+candidate, not a shipped default. Its three roles have the same semantic tensor
+I/O as the M2 fused ORT plan. AOTInductor packages compiled but failed task
+parity and are rejected rather than cataloged as public artifacts. Unevaluated
+M3–M5 backend variants remain unshipped. Internal smoke wrappers do not make
+them shipped artifacts.
 
 ## Catalog admission rule
 

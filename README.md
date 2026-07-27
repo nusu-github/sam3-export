@@ -14,8 +14,9 @@ See the [glossary](docs/GLOSSARY.md), [component policy](docs/EXPORT_POLICY.md),
 [public artifact catalog](docs/EXPORT_CUTS.md), and
 [deployment plans](docs/DEPLOYMENT_PLANS.md). Public APIs are specified in
 [IMAGE_PCS_API.md](docs/IMAGE_PCS_API.md) and
-[INTERACTIVE_IMAGE_API.md](docs/INTERACTIVE_IMAGE_API.md), with the M4 video
-contract in [BASE_VIDEO_API.md](docs/BASE_VIDEO_API.md).
+[INTERACTIVE_IMAGE_API.md](docs/INTERACTIVE_IMAGE_API.md), with the M4 and M5
+video contracts in [BASE_VIDEO_API.md](docs/BASE_VIDEO_API.md) and
+[MULTIPLEX_VIDEO_API.md](docs/MULTIPLEX_VIDEO_API.md).
 
 ## Package layout
 
@@ -125,6 +126,23 @@ frame once, and chunks five objects into two B4 tracker launches. It has no CPU
 fallback and excludes SAM3.1 Tri neck, bucket state and Multiplex. See
 [BASE_VIDEO_API.md](docs/BASE_VIDEO_API.md) for the state and lifecycle rules.
 
+M5 ships **SAM3.1 multiplex video tracking / point-box-mask correction /
+bucket16 / ORT CUDA v1** under the separate
+`sam3_1_multiplex_video_tracking_ortcuda_v1` plan. One fixed 16-slot artifact
+is dispatched once or twice for at most 32 public object IDs:
+
+```bash
+PYTHONPATH=src python scripts/export_multiplex_video_v2.py \
+  --official-repo ../sam3 \
+  --checkpoint /path/to/sam3.1_multiplex.pt \
+  --official-reference-dir /path/to/m5-official-reference
+```
+
+`MultiplexStateV1` keeps learned bucket state CUDA-resident and is not
+compatible with M4 `BaseVideoStateV1`. See
+[MULTIPLEX_VIDEO_API.md](docs/MULTIPLEX_VIDEO_API.md) and the
+[M5 profile decision](docs/decision-records/M5_SAM31_MULTIPLEX_PROFILE.md).
+
 ## Installation
 
 ```bash
@@ -137,7 +155,7 @@ is never imported by the export cuts.
 
 The core package includes manifest validation but delays importing ONNX
 Runtime until session creation. Install the pinned CUDA runtime only when using
-the M2, M3 or M4 bundles:
+the M2–M5 bundles:
 
 ```bash
 pip install -e '.[ort-cuda]'

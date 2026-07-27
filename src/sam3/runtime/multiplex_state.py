@@ -17,9 +17,7 @@ MAX_BUCKETS: Final[int] = 2
 MAX_OBJECTS: Final[int] = BUCKET_CAPACITY * MAX_BUCKETS
 CONDITIONING_CAPACITY: Final[int] = 4
 NON_CONDITIONING_CAPACITY: Final[int] = 6
-SPATIAL_CAPACITY: Final[int] = (
-    CONDITIONING_CAPACITY + NON_CONDITIONING_CAPACITY
-)
+SPATIAL_CAPACITY: Final[int] = CONDITIONING_CAPACITY + NON_CONDITIONING_CAPACITY
 POINTER_FRAME_CAPACITY: Final[int] = 16
 
 
@@ -110,9 +108,7 @@ class MultiplexVariantParameters:
             "max-buckets": "max_buckets",
             "num-maskmem": "num_maskmem",
             "conditioning-spatial-capacity": "conditioning_spatial_capacity",
-            "non-conditioning-spatial-capacity": (
-                "non_conditioning_spatial_capacity"
-            ),
+            "non-conditioning-spatial-capacity": ("non_conditioning_spatial_capacity"),
             "total-spatial-input-capacity": "total_spatial_input_capacity",
             "object-pointer-frame-capacity": "object_pointer_frame_capacity",
             "hidden-dimension": "hidden_dimension",

@@ -33,15 +33,15 @@ from .load_sam3 import (
     resolve_sam3_checkpoint,
 )
 from .multiplex import (
-    ParameterMappingReport,
-    MultiplexTrackerCore,
-    MultiplexVideoModules,
     SAM31_CHECKPOINT_NAME,
     SAM31_CHECKPOINT_SHA256,
     SAM31_REPOSITORY,
     SAM31_REVISION,
     TRACKER_PREFIX,
     TRI_NECK_PREFIX,
+    MultiplexTrackerCore,
+    MultiplexVideoModules,
+    ParameterMappingReport,
     build_sam31_multiplex_tracker_core,
     build_sam31_multiplex_video_modules,
     build_sam31_tri_neck,

@@ -10,6 +10,43 @@ Lifecycle and dispatch role are separate. **Shipped**, **candidate** and
 **fallback** describe dispatch. A selected-K recipe can therefore be a
 candidate with an intended optional role without calling it shipped.
 
+## M5 shipped SAM3.1 Multiplex video plan
+
+`sam3_1_multiplex_video_tracking_ortcuda_v1` is shipped/default only for
+**SAM3.1 multiplex video tracking / point-box-mask correction / bucket16 / ORT
+CUDA v1**. It is packaged under
+`artifacts/sam3-multiplex-video-tracking-ortcuda-v2/` with the fixed
+`fixed-bucket1-dispatch1to2-1008-p16-mask288-m10-ptr16-fp16` profile.
+
+```text
+MultiplexFrameEncode -- Tri per-frame CUDA cache -------------------+
+                                                                   |
+interaction: host resolves object -> bucket/slot                   |
+             MultiplexInteractionPreview (non-mutating)            |
+                 -> MultiplexScatterReplaceCommit -- selected slot |
+                                                                   |
+propagation: MultiplexPropagation fixed B1 <-----------------------+
+                 -> one dispatch for bucket 0
+                 -> second independent dispatch only for bucket 1
+```
+
+The Host Runtime owns public object IDs, stable lowest-free-slot assignment
+and assignment revision. It dispatches the same fixed B1 artifact once for
+1–16 objects and twice for 17–32 objects. Normal frame progression retains
+shared memory, validity and pointers in each bucket's CUDA state; demux occurs
+only when ordering final public results by object ID.
+
+Selected interaction is preview-only until a single-mask handle is committed.
+Commit scatter-replaces the target slot once, and non-target slot/bucket state
+remains byte-identical. CUDA EP and IOBinding are required, D2H is final-public
+output only, and there is no fallback. `MultiplexStateV1` is not M4
+`BaseVideoStateV1`.
+
+The Public API/state contract is
+[MULTIPLEX_VIDEO_API.md](MULTIPLEX_VIDEO_API.md). The measured B1 dispatch
+adoption and bounded-dynamic rejection are recorded in
+[the M5 decision record](decision-records/M5_SAM31_MULTIPLEX_PROFILE.md).
+
 ## M4 shipped base-video plan
 
 `sam3_base_video_tracking_ortcuda_v1` is shipped/default only for **SAM3 base
@@ -165,8 +202,8 @@ copying large continuation tensors through CPU/NumPy. See
 
 ## Later plans
 
-SAM3.1 native Multiplex (M5) and additional backend bundles (M6) remain
-planned. M4 `BaseVideoStateV1` is not a preliminary SAM3.1 bucket-space ABI.
+Additional backend bundles (M6) remain planned. M4 `BaseVideoStateV1` and M5
+`MultiplexStateV1` remain separate semantic ABIs.
 
 ## Decision and publication gates
 
@@ -175,9 +212,8 @@ planned. M4 `BaseVideoStateV1` is not a preliminary SAM3.1 bucket-space ABI.
   four-stage parity.
 - A plan manifest identifies default, optional and fallback applicability per
   backend/profile. An unrecorded fallback is not permitted.
-- The M2 manifests, M3 interactive manifest and M4 base-video manifest passed
-  schema/package
-  validation and their CUDA/Public API release validators; later plan changes
-  require the same gate.
+- The M2 manifests, M3 interactive manifest, M4 base-video manifest and M5
+  Multiplex manifest passed schema/package validation and their CUDA/Public
+  API release validators; later plan changes require the same gate.
 - The Host Runtime dispatches by public plan ID and resolved manifest; it does
   not expose backend tensor names in the Public API.

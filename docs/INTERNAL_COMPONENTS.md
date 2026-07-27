@@ -29,6 +29,12 @@ Public deployment artifacts are listed only in
 | `BaseTrackerPreviewMultimask3` / `BaseTrackerPreviewSingle1` | M4 plan components | Memory-aware B4 prediction with fixed `BaseVideoStateV1` and the M3 prompt ABI. Multimask is preview-only; single emits private device values required for commit. | M4 correction and trajectory gates |
 | `BaseMemoryCommit` | M4 plan component | Converts the final single preview into conditioning memory. It is a correction boundary, not the steady-state default by itself. | M4 correction/replacement gates |
 | `BaseTrackerStepAndCommitSingle1` | M4 plan component | Fused single preview and non-conditioning memory encode for steady-state propagation; selected only for the shipped B4 profile. | M4 fused-cut decision and CUDA validator |
+| `Mux` / `Demux` | M5 canonical components | Convert host-owned assignment/validity between object order and fixed `[bucket,16,...]` tensors. Demux is used at the public result boundary, not for frame-to-frame large state. | M5 identity/padding/removal isolation tests |
+| `MultiplexFrameEncode` | M5 plan component | Produces checkpoint-mapped Tri interactive and propagation views once per frame. It is distinct from the M4 dual/SAM2-neck frame view. | M5 official/local and CUDA frame parity |
+| `MultiplexInteractionPreviewMultimask3` / `MultiplexInteractionPreviewSingle1` | M5 plan components | Run point/box/mask interaction for a host-selected slot. Preview is non-mutating; only single1 emits private scatter/commit candidates. | M5 selected-interaction and lifecycle gates |
+| `MultiplexPropagation` | M5 canonical/plan component | Applies native shared-memory 16-slot propagation to one fixed bucket. The public two-bucket recipe dispatches this component twice rather than treating wrappers as one-to-one artifacts. | M5 1/2/15/16 and 17/32 trajectory gates |
+| `MultiplexMemoryCommit` | M5 plan component | Encodes the selected single-mask result into checkpoint-native shared bucket memory. It does not reuse M4 memory scale/bias or per-object memory layout. | M5 correction/memory parity |
+| `MultiplexScatterReplaceCommit` | M5 canonical/plan component | Replaces one selected slot and commits its conditioning memory while preserving all non-target slots/buckets. | M5 byte-isolation and stale-preview gates |
 | `sam3.export.fixtures.PromptEncode` | Test-only fixture | Fixed tiny/default point contract used for unit export coverage. It is not the production prompt encoder artifact. | Prompt interactive export tests |
 | `sam3.export.fixtures.InteractiveDecode` | Test-only fixture | Self-contained tiny SAM head; it does not consume `PromptEncode` outputs and is not a production pipeline. | Prompt interactive export tests |
 | `MemoryEncode` | Internal component / fixture | Earlier generic-shape fixture retained for component tests. M4 production uses checkpoint-validated `BaseMemoryCommit`; this fixture is not its artifact ABI. | Remaining-cut regression tests |
@@ -39,10 +45,9 @@ coverage is a component-quality gate, not a public artifact release list.
 
 ## Planned canonical components
 
-Names such as `VisionTrunk`, `DetectorNeck`, `Mux`, `Demux`, `TrackPropagateMux16` and
-`MemoryEncodeMux16` are architectural
-component names. They become code and fixtures in the milestone that needs
-them; listing them does not claim they are implemented or shipped.
+Names such as `VisionTrunk` and `DetectorNeck` remain architectural component
+names unless a milestone implements and verifies them. Listing a name does not
+claim it is a separately distributed artifact.
 
 Shape similarity does not establish semantic compatibility. In particular,
 concept prompts and instance prompts, detector and interactive pyramids, and

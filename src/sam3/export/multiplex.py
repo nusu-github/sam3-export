@@ -107,9 +107,7 @@ class ScatterReplace(nn.Module):
         self, bucket_values: Tensor, replacement: Tensor, assignment: Tensor
     ) -> Tensor:
         bucket_count = (
-            bucket_values.shape[0]
-            if self.bucket_count is None
-            else self.bucket_count
+            bucket_values.shape[0] if self.bucket_count is None else self.bucket_count
         )
         flat = _flat_assignment(
             assignment,
@@ -118,9 +116,9 @@ class ScatterReplace(nn.Module):
         )
         if assignment.shape[0] != 1 or replacement.shape[0] != 1:
             raise ValueError("scatter replace accepts exactly one selected object")
-        if (
-            self.bucket_count is not None
-            and bucket_values.shape[:2] != (self.bucket_count, BUCKET_CAPACITY)
+        if self.bucket_count is not None and bucket_values.shape[:2] != (
+            self.bucket_count,
+            BUCKET_CAPACITY,
         ):
             raise ValueError("bucket_values has the wrong fixed bucket shape")
         output = bucket_values.flatten(0, 1)

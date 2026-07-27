@@ -134,12 +134,7 @@ def _validate_prompt_range(
     if prompt.box_xyxy is not None:
         box = np.asarray(prompt.box_xyxy)
         if box.shape == (4,) and np.all(np.isfinite(box)):
-            if (
-                box[0] < 0
-                or box[1] < 0
-                or box[2] > width
-                or box[3] > height
-            ):
+            if box[0] < 0 or box[1] < 0 or box[2] > width or box[3] > height:
                 raise ValueError("box_xyxy is outside the video frame")
 
 
@@ -249,9 +244,7 @@ class MultiplexVideoSession:
         cached = self._frame_cache.get(frame_index)
         if cached is not None:
             return cached
-        values, original_size = _preprocess_interactive_image(
-            self._frames[frame_index]
-        )
+        values, original_size = _preprocess_interactive_image(self._frames[frame_index])
         checkpoint = self._plan.manifest["model"]["checkpoint"]["digest"]["value"]
         cache = next(
             item
@@ -371,9 +364,7 @@ class MultiplexVideoSession:
         self._previews.pop(preview_handle._token, None)
         self._conditioned_objects.add(record.object_id)
         self._mutation_revision += 1
-        logits = record.backend_preview.low_res_logits[0].astype(
-            np.float32, copy=False
-        )
+        logits = record.backend_preview.low_res_logits[0].astype(np.float32, copy=False)
         score = float(record.backend_preview.scores[0])
         handle = self._require_video()
         mask = _resize_and_threshold(

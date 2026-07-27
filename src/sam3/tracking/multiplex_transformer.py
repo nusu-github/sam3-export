@@ -26,15 +26,9 @@ def _multiplex_chunked_attention_impl(
     batch, query_length, channels = query.shape
     key_length = key.shape[1]
     head_dimension = channels // num_heads
-    q = query.reshape(
-        batch, query_length, num_heads, head_dimension
-    ).transpose(1, 2)
-    k = key.reshape(
-        batch, key_length, num_heads, head_dimension
-    ).transpose(1, 2)
-    v = value.reshape(
-        batch, key_length, num_heads, head_dimension
-    ).transpose(1, 2)
+    q = query.reshape(batch, query_length, num_heads, head_dimension).transpose(1, 2)
+    k = key.reshape(batch, key_length, num_heads, head_dimension).transpose(1, 2)
+    v = value.reshape(batch, key_length, num_heads, head_dimension).transpose(1, 2)
     scale = head_dimension**-0.5
     running_max = torch.full(
         (batch, num_heads, query_length, 1),
@@ -63,15 +57,10 @@ def _multiplex_chunked_attention_impl(
         running_value = running_value * old_scale + torch.matmul(
             weights, v[:, :, start:end]
         )
-        running_sum = running_sum * old_scale + torch.sum(
-            weights, dim=-1, keepdim=True
-        )
+        running_sum = running_sum * old_scale + torch.sum(weights, dim=-1, keepdim=True)
         running_max = new_max
     attended = running_value / running_sum.clamp_min(1e-12)
-    return (
-        attended.transpose(1, 2)
-        .reshape(batch, query_length, channels)
-    )
+    return attended.transpose(1, 2).reshape(batch, query_length, channels)
 
 
 def multiplex_chunked_attention(

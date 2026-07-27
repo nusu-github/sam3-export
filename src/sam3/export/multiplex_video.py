@@ -117,9 +117,9 @@ class MultiplexInteractionPreview(nn.Module):
         mask_embedding = prompt_encoder._embed_masks(
             mask_input.to(dtype=activation_dtype)
         )
-        no_mask = prompt_encoder.no_mask_embed.weight.reshape(
-            1, -1, 1, 1
-        ).expand_as(mask_embedding)
+        no_mask = prompt_encoder.no_mask_embed.weight.reshape(1, -1, 1, 1).expand_as(
+            mask_embedding
+        )
         dense = torch.where(has_mask[:, None, None, None], mask_embedding, no_mask)
         return sparse, dense, sparse_valid
 
@@ -308,9 +308,7 @@ class MultiplexPropagation(nn.Module):
         pointer_valid: Tensor,
         pointer_age: Tensor,
     ) -> Tensor:
-        bucket_count, spatial_capacity, channels, height, width = (
-            memory_features.shape
-        )
+        bucket_count, spatial_capacity, channels, height, width = memory_features.shape
         if self.bucket_count is not None and bucket_count != self.bucket_count:
             raise ValueError("memory bucket count disagrees with fixed profile")
         if spatial_capacity != self.variant.total_spatial_input_capacity:
@@ -327,9 +325,9 @@ class MultiplexPropagation(nn.Module):
         memory_tokens = memory_features.permute(1, 3, 4, 0, 2).reshape(
             spatial_capacity * height * width, bucket_count, channels
         )
-        memory_position_tokens = positioned_memory.permute(
-            1, 3, 4, 0, 2
-        ).reshape(spatial_capacity * height * width, bucket_count, channels)
+        memory_position_tokens = positioned_memory.permute(1, 3, 4, 0, 2).reshape(
+            spatial_capacity * height * width, bucket_count, channels
+        )
         memory_padding = (~valid_memory).repeat_interleave(height * width, dim=1)
 
         image_temporal = temporal[0]
@@ -360,9 +358,7 @@ class MultiplexPropagation(nn.Module):
         valid_pointer = pointer_valid.to(torch.bool)
         if valid_pointer.ndim == 2:
             valid_pointer = valid_pointer[..., None]
-        valid_pointer = (
-            valid_pointer & slot_validity.to(torch.bool)[:, None, :]
-        )
+        valid_pointer = valid_pointer & slot_validity.to(torch.bool)[:, None, :]
         pointer_padding = (~valid_pointer).flatten(1)
 
         prompt = torch.cat((memory_tokens, pointer_tokens), dim=0)
@@ -388,9 +384,7 @@ class MultiplexPropagation(nn.Module):
         has_state = torch.any(valid_memory, dim=1) | torch.any(
             valid_pointer, dim=(1, 2)
         )
-        return torch.where(
-            has_state[:, None, None, None], conditioned, source
-        )
+        return torch.where(has_state[:, None, None, None], conditioned, source)
 
     def forward(
         self,
@@ -463,19 +457,16 @@ class MultiplexPropagation(nn.Module):
         )
         validity = slot_validity.to(conditioned.dtype)[..., None]
         bucket_count = conditioned.shape[0]
-        extra_embeddings = validity * self.tracker.output_valid_embed + (
-            1 - validity
-        ) * self.tracker.output_invalid_embed
+        extra_embeddings = (
+            validity * self.tracker.output_valid_embed
+            + (1 - validity) * self.tracker.output_invalid_embed
+        )
         image_pe = self.tracker.image_pe_layer(
             self.variant.memory_spatial_size
         ).unsqueeze(0)
         image_pe = image_pe.to(device=conditioned.device, dtype=conditioned.dtype)
-        high_res_0 = propagation_high_res_0.expand(
-            bucket_count, -1, -1, -1
-        )
-        high_res_1 = propagation_high_res_1.expand(
-            bucket_count, -1, -1, -1
-        )
+        high_res_0 = propagation_high_res_0.expand(bucket_count, -1, -1, -1)
+        high_res_1 = propagation_high_res_1.expand(bucket_count, -1, -1, -1)
         low_res, scores, output_tokens, object_score = self.tracker.sam_mask_decoder(
             image_embeddings=conditioned,
             image_pe=image_pe,
@@ -583,16 +574,14 @@ class MultiplexMemoryCommit(nn.Module):
         masks = bucket_masks.squeeze(2)
         bucket_count = bucket_masks.shape[0]
         validity = slot_validity.to(torch.bool)
-        masks = torch.where(
-            validity[..., None, None], masks, torch.zeros_like(masks)
-        )
+        masks = torch.where(validity[..., None, None], masks, torch.zeros_like(masks))
         memory_masks = (
             torch.sigmoid(masks) * self.variant.memory_sigmoid_scale
             + self.variant.memory_sigmoid_bias
         )
-        condition_flag = (
-            conditioning_validity.to(torch.bool) & validity
-        ).to(memory_masks.dtype)
+        condition_flag = (conditioning_validity.to(torch.bool) & validity).to(
+            memory_masks.dtype
+        )
         condition = (
             condition_flag * self.variant.condition_mask_foreground
             + (1 - condition_flag) * self.variant.condition_mask_background
@@ -605,15 +594,11 @@ class MultiplexMemoryCommit(nn.Module):
         )
         memory = output["vision_features"]
         position = output["vision_pos_enc"][0]
-        appearing = (
-            (object_score > 0) & validity[..., None]
-        ).to(memory.dtype)
+        appearing = ((object_score > 0) & validity[..., None]).to(memory.dtype)
         no_object = (
             (1 - appearing) * self.tracker.no_obj_embed_spatial.unsqueeze(0)
         ).sum(dim=1)
-        memory = (memory + no_object[..., None, None]).to(
-            dtype=propagation_image.dtype
-        )
+        memory = (memory + no_object[..., None, None]).to(dtype=propagation_image.dtype)
         return memory, position
 
 
@@ -634,9 +619,7 @@ class MultiplexScatterReplaceCommit(nn.Module):
         # exportable without weakening the public assignment boundary.
         self.replace_low = ScatterReplace(bucket_count, validate_assignments=False)
         self.replace_high = ScatterReplace(bucket_count, validate_assignments=False)
-        self.replace_pointer = ScatterReplace(
-            bucket_count, validate_assignments=False
-        )
+        self.replace_pointer = ScatterReplace(bucket_count, validate_assignments=False)
         self.replace_score = ScatterReplace(bucket_count, validate_assignments=False)
         self.memory_commit = MultiplexMemoryCommit(
             tracker,
@@ -660,15 +643,9 @@ class MultiplexScatterReplaceCommit(nn.Module):
         slot_validity: Tensor,
         conditioning_validity: Tensor,
     ) -> tuple[Tensor, Tensor, Tensor, Tensor, Tensor, Tensor]:
-        low_res = self.replace_low(
-            bucket_low_res, replacement_low_res, assignment
-        )
-        high_res = self.replace_high(
-            bucket_high_res, replacement_high_res, assignment
-        )
-        pointer = self.replace_pointer(
-            bucket_pointers, replacement_pointer, assignment
-        )
+        low_res = self.replace_low(bucket_low_res, replacement_low_res, assignment)
+        high_res = self.replace_high(bucket_high_res, replacement_high_res, assignment)
+        pointer = self.replace_pointer(bucket_pointers, replacement_pointer, assignment)
         object_score = self.replace_score(
             bucket_object_scores, replacement_object_score, assignment
         )

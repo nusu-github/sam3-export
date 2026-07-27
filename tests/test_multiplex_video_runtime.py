@@ -156,9 +156,7 @@ class FakeMultiplexAdapter:
             [self.slot_state[bucket, slot] for bucket, slot in assignments],
             dtype=np.float32,
         )
-        logits = np.broadcast_to(
-            values[:, None, None], (len(values), 288, 288)
-        ).copy()
+        logits = np.broadcast_to(values[:, None, None], (len(values), 288, 288)).copy()
         scores = values.copy()
         self.counters["final_demuxes"] += 1
         self.counters["d2h_bytes"] += logits.nbytes + scores.nbytes
@@ -269,9 +267,7 @@ def _single_options() -> InteractivePredictOptions:
 def test_preview_commit_is_single_slot_and_assignment_revision_is_stable(
     bundle: Path,
 ) -> None:
-    session = create_multiplex_video_session(
-        MULTIPLEX_VIDEO_PLAN_ID, bundle_dir=bundle
-    )
+    session = create_multiplex_video_session(MULTIPLEX_VIDEO_PLAN_ID, bundle_dir=bundle)
     session.set_video(_frames())
     session.add_object(7)
     revision = session._state.revision
@@ -295,9 +291,7 @@ def test_preview_commit_is_single_slot_and_assignment_revision_is_stable(
 def test_add_remove_readd_uses_minimum_free_slot_without_compaction(
     bundle: Path,
 ) -> None:
-    session = create_multiplex_video_session(
-        MULTIPLEX_VIDEO_PLAN_ID, bundle_dir=bundle
-    )
+    session = create_multiplex_video_session(MULTIPLEX_VIDEO_PLAN_ID, bundle_dir=bundle)
     session.set_video(_frames())
     for object_id in range(17):
         session.add_object(object_id)
@@ -315,16 +309,12 @@ def test_add_remove_readd_uses_minimum_free_slot_without_compaction(
 def test_two_bucket_propagation_returns_sorted_public_ids_only(
     bundle: Path, count: int
 ) -> None:
-    session = create_multiplex_video_session(
-        MULTIPLEX_VIDEO_PLAN_ID, bundle_dir=bundle
-    )
+    session = create_multiplex_video_session(MULTIPLEX_VIDEO_PLAN_ID, bundle_dir=bundle)
     session.set_video(_frames(3))
     ids = list(reversed(range(count)))
     for object_id in ids:
         session.add_object(object_id)
-        handle = session.preview(
-            object_id, 0, options=_single_options()
-        ).preview_handle
+        handle = session.preview(object_id, 0, options=_single_options()).preview_handle
         assert handle is not None
         session.commit(handle)
     assignment_revision = session._state.revision
@@ -342,9 +332,7 @@ def test_two_bucket_propagation_returns_sorted_public_ids_only(
 
 
 def test_assignment_update_stales_preview_and_capacity_is_32(bundle: Path) -> None:
-    session = create_multiplex_video_session(
-        MULTIPLEX_VIDEO_PLAN_ID, bundle_dir=bundle
-    )
+    session = create_multiplex_video_session(MULTIPLEX_VIDEO_PLAN_ID, bundle_dir=bundle)
     session.set_video(_frames())
     session.add_object(0)
     handle = session.preview(0, 0, options=_single_options()).preview_handle
@@ -366,9 +354,7 @@ def test_errors_are_deterministic_and_scope_is_separate(bundle: Path) -> None:
         create_multiplex_video_session(BASE_VIDEO_PLAN_ID, bundle_dir=bundle)
     with pytest.raises(ManifestError, match="scope mismatch"):
         create_video_session(MULTIPLEX_VIDEO_PLAN_ID, bundle_dir=bundle)
-    session = create_multiplex_video_session(
-        MULTIPLEX_VIDEO_PLAN_ID, bundle_dir=bundle
-    )
+    session = create_multiplex_video_session(MULTIPLEX_VIDEO_PLAN_ID, bundle_dir=bundle)
     with pytest.raises(VideoStateError, match="set_video"):
         session.add_object(1)
     session.set_video(_frames())
@@ -396,12 +382,8 @@ def test_errors_are_deterministic_and_scope_is_separate(bundle: Path) -> None:
 
 
 def test_foreign_handle_and_public_types_hide_backend_abi(bundle: Path) -> None:
-    first = create_multiplex_video_session(
-        MULTIPLEX_VIDEO_PLAN_ID, bundle_dir=bundle
-    )
-    second = create_multiplex_video_session(
-        MULTIPLEX_VIDEO_PLAN_ID, bundle_dir=bundle
-    )
+    first = create_multiplex_video_session(MULTIPLEX_VIDEO_PLAN_ID, bundle_dir=bundle)
+    second = create_multiplex_video_session(MULTIPLEX_VIDEO_PLAN_ID, bundle_dir=bundle)
     for session in (first, second):
         session.set_video(_frames())
         session.add_object(1)
@@ -417,9 +399,7 @@ def test_foreign_handle_and_public_types_hide_backend_abi(bundle: Path) -> None:
         type(create_multiplex_video_session),
     )
     annotation_text = " ".join(
-        str(typing.get_type_hints(value))
-        for value in public_types
-        if callable(value)
+        str(typing.get_type_hints(value)) for value in public_types if callable(value)
     )
     public_text = repr(
         (

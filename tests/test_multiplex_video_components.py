@@ -56,19 +56,13 @@ def _args(bucket_count: int) -> list[torch.Tensor]:
         torch.randn(1, 32, 288, 288, device=device, dtype=dtype),
         torch.randn(1, 64, 144, 144, device=device, dtype=dtype),
         torch.zeros(bucket_count, 16, device=device, dtype=torch.bool),
-        torch.randn(
-            bucket_count, 10, 256, 72, 72, device=device, dtype=dtype
-        ),
-        torch.randn(
-            bucket_count, 10, 256, 72, 72, device=device, dtype=dtype
-        ),
+        torch.randn(bucket_count, 10, 256, 72, 72, device=device, dtype=dtype),
+        torch.randn(bucket_count, 10, 256, 72, 72, device=device, dtype=dtype),
         torch.randn(10, 256, 72, 72, device=device, dtype=dtype),
         torch.randn(10, 256, 72, 72, device=device, dtype=dtype),
         torch.zeros(bucket_count, 10, device=device, dtype=torch.bool),
         torch.zeros(bucket_count, 10, device=device, dtype=torch.int64),
-        torch.randn(
-            bucket_count, 16, 16, 256, device=device, dtype=dtype
-        ),
+        torch.randn(bucket_count, 16, 16, 256, device=device, dtype=dtype),
         torch.zeros(bucket_count, 16, device=device, dtype=torch.bool),
         torch.zeros(bucket_count, 16, device=device, dtype=torch.int64),
     ]
@@ -95,12 +89,8 @@ def test_padding_values_do_not_change_active_slot(tracker: torch.nn.Module) -> N
     second_args[11][:, 1:] = 100
     first = module(*first_args)
     second = module(*second_args)
-    torch.testing.assert_close(
-        first[2][:, :1], second[2][:, :1], atol=2e-3, rtol=2e-3
-    )
-    torch.testing.assert_close(
-        first[4][:, :1], second[4][:, :1], atol=2e-3, rtol=2e-3
-    )
+    torch.testing.assert_close(first[2][:, :1], second[2][:, :1], atol=2e-3, rtol=2e-3)
+    torch.testing.assert_close(first[4][:, :1], second[4][:, :1], atol=2e-3, rtol=2e-3)
 
 
 @torch.inference_mode()

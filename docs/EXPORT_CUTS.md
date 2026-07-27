@@ -11,6 +11,29 @@ logical component is not automatically a separately distributed artifact.
 
 ## Shipped deployment bundles
 
+### SAM3.1 multiplex video tracking / point-box-mask correction / bucket16 / ORT CUDA v1
+
+| Property | Contract |
+|---|---|
+| Status | Shipped v2 bundle; default only within the SAM3.1 Multiplex video use case |
+| Backend/profile | ORT 1.27.0 CUDA EP + IOBinding; `fixed-bucket1-dispatch1to2-1008-p16-mask288-m10-ptr16-fp16` |
+| Package manifest | `sam3_1_multiplex_video_tracking_ortcuda_v1`, contract `1.0.0` |
+| Host boundary | RGB frame/prompt validation, public object lifecycle and assignment, fixed B1 dispatch 1–2 times, final object-ID ordering and mask conversion |
+| Exclusions | SAM3 base, text/geometry PCS, streaming, CPU fallback, unbounded dynamic buckets and M6 backend bundles |
+
+| Public artifact role | Short tensor I/O / boundary |
+|---|---|
+| `multiplex-frame-encode` | normalized `pixel_values[1,3,1008,1008]` fp16 -> Tri interactive and propagation 72/144/288 frame views; one CUDA cache entry per frame |
+| `multiplex-interaction-preview-multimask3` | selected slot's interactive view + P16/box1/mask288 prompt validity -> three display masks/scores and private commit candidates; non-mutating |
+| `multiplex-interaction-preview-single1` | same selected-slot prompt path -> one mask/score and private commit mask/pointer/score |
+| `multiplex-propagation-bucket1` | propagation frame view + one fixed `[16,...]` `MultiplexStateV1` bucket -> native multiplex mask/score/pointer updates; dispatched once or twice |
+| `multiplex-memory-commit-bucket1` | selected single-mask commit value -> conditioning shared-memory feature/position for one bucket |
+| `multiplex-scatter-replace-commit-bucket1` | selected slot result + existing bucket state -> scatter-replaced slot and committed memory while non-target slots remain unchanged |
+
+Exact bucket tensors, variant parameters, graph signatures, hashes and device
+handoffs are manifest-owned. The host-visible state/lifecycle contract is
+[MULTIPLEX_VIDEO_API.md](MULTIPLEX_VIDEO_API.md).
+
 ### SAM3 base video tracking / point-box-mask correction / per-object batch / ORT CUDA v1
 
 | Property | Contract |
@@ -105,7 +128,7 @@ of the draft v2 contract rather than retroactive claims about v1.
 
 ## Later artifacts are not shipped artifacts
 
-SAM3.1 and other backend/profile variants remain later milestones.
+Additional backend/profile variants remain later milestones.
 Internal smoke wrappers do not make them shipped artifacts.
 
 ## Catalog admission rule

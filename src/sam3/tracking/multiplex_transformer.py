@@ -14,6 +14,79 @@ from sam3.grounding.transformer_wrapper import TransformerWrapper
 from sam3.primitives.rope import apply_rotary_enc_real, compute_axial_cis
 
 
+def _multiplex_chunked_attention_impl(
+    query: Tensor,
+    key: Tensor,
+    value: Tensor,
+    key_validity: Tensor,
+    num_heads: int,
+) -> Tensor:
+    """Exact online softmax without materializing the 52k-token score matrix."""
+
+    batch, query_length, channels = query.shape
+    key_length = key.shape[1]
+    head_dimension = channels // num_heads
+    q = query.reshape(
+        batch, query_length, num_heads, head_dimension
+    ).transpose(1, 2)
+    k = key.reshape(
+        batch, key_length, num_heads, head_dimension
+    ).transpose(1, 2)
+    v = value.reshape(
+        batch, key_length, num_heads, head_dimension
+    ).transpose(1, 2)
+    scale = head_dimension**-0.5
+    running_max = torch.full(
+        (batch, num_heads, query_length, 1),
+        -torch.inf,
+        dtype=query.dtype,
+        device=query.device,
+    )
+    running_sum = torch.zeros_like(running_max)
+    running_value = torch.zeros(
+        (batch, num_heads, query_length, head_dimension),
+        dtype=query.dtype,
+        device=query.device,
+    )
+    chunk_size = 512
+    for start in range(0, key_length, chunk_size):
+        end = min(start + chunk_size, key_length)
+        scores = torch.matmul(q, k[:, :, start:end].transpose(-1, -2))
+        scores = scores * scale
+        valid = key_validity[:, None, None, start:end].to(torch.bool)
+        scores = torch.where(valid, scores, torch.full_like(scores, -torch.inf))
+        chunk_max = torch.amax(scores, dim=-1, keepdim=True)
+        new_max = torch.maximum(running_max, chunk_max)
+        old_scale = torch.exp(running_max - new_max)
+        weights = torch.exp(scores - new_max)
+        weights = torch.where(valid, weights, torch.zeros_like(weights))
+        running_value = running_value * old_scale + torch.matmul(
+            weights, v[:, :, start:end]
+        )
+        running_sum = running_sum * old_scale + torch.sum(
+            weights, dim=-1, keepdim=True
+        )
+        running_max = new_max
+    attended = running_value / running_sum.clamp_min(1e-12)
+    return (
+        attended.transpose(1, 2)
+        .reshape(batch, query_length, channels)
+    )
+
+
+def multiplex_chunked_attention(
+    query: Tensor,
+    key: Tensor,
+    value: Tensor,
+    key_validity: Tensor,
+    num_heads: int,
+) -> Tensor:
+    with torch.autocast(device_type=query.device.type, enabled=False):
+        return _multiplex_chunked_attention_impl(
+            query, key, value, key_validity, num_heads
+        )
+
+
 class SimpleRoPEAttention(nn.Module):
     """Projection-free RoPE attention used by the SAM3.1 tracker."""
 
@@ -84,14 +157,27 @@ class SimpleRoPEAttention(nn.Module):
             repeat_freqs_k=self.rope_k_repeat,
         )
         k = torch.cat((rotated, k[:, :, num_k_rope:]), dim=2)
-        mask = None
-        if key_padding_mask is not None:
-            mask = (~key_padding_mask.to(torch.bool))[:, None, None, :]
-        dropout = self.dropout_p if self.training else 0.0
-        output = F.scaled_dot_product_attention(
-            q, k, v, attn_mask=mask, dropout_p=dropout
+        if self.training and self.dropout_p:
+            raise RuntimeError("Multiplex export attention is inference-only")
+        validity = (
+            torch.ones(
+                (batch, key_length),
+                dtype=torch.int32,
+                device=q.device,
+            )
+            if key_padding_mask is None
+            else (~key_padding_mask.to(torch.bool)).to(torch.int32)
         )
-        return output.transpose(1, 2).reshape(batch, query_length, v_channels)
+        q_flat = q.transpose(1, 2).reshape(batch, query_length, q_channels)
+        k_flat = k.transpose(1, 2).reshape(batch, key_length, k_channels)
+        v_flat = v.transpose(1, 2).reshape(batch, value_length, v_channels)
+        return multiplex_chunked_attention(
+            q_flat,
+            k_flat,
+            v_flat,
+            validity,
+            self.num_heads,
+        )
 
 
 class DecoupledTransformerDecoderLayerv2(nn.Module):
@@ -269,4 +355,5 @@ __all__ = [
     "SimpleRoPEAttention",
     "TransformerEncoderDecoupledCrossAttention",
     "create_multiplex_transformer",
+    "multiplex_chunked_attention",
 ]

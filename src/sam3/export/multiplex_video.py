@@ -357,9 +357,11 @@ class MultiplexPropagation(nn.Module):
             .permute(1, 2, 0, 3)
             .flatten(0, 1)
         )
+        valid_pointer = pointer_valid.to(torch.bool)
+        if valid_pointer.ndim == 2:
+            valid_pointer = valid_pointer[..., None]
         valid_pointer = (
-            pointer_valid.to(torch.bool)[..., None]
-            & slot_validity.to(torch.bool)[:, None, :]
+            valid_pointer & slot_validity.to(torch.bool)[:, None, :]
         )
         pointer_padding = (~valid_pointer).flatten(1)
 
@@ -588,11 +590,13 @@ class MultiplexMemoryCommit(nn.Module):
             torch.sigmoid(masks) * self.variant.memory_sigmoid_scale
             + self.variant.memory_sigmoid_bias
         )
-        condition = torch.where(
-            conditioning_validity.to(torch.bool) & validity,
-            torch.full_like(slot_validity, self.variant.condition_mask_foreground),
-            torch.full_like(slot_validity, self.variant.condition_mask_background),
+        condition_flag = (
+            conditioning_validity.to(torch.bool) & validity
         ).to(memory_masks.dtype)
+        condition = (
+            condition_flag * self.variant.condition_mask_foreground
+            + (1 - condition_flag) * self.variant.condition_mask_background
+        )
         condition = condition[..., None, None].expand_as(memory_masks)
         mask_channels = torch.cat((memory_masks, condition), dim=1)
         frame = propagation_image.expand(bucket_count, -1, -1, -1)
@@ -607,7 +611,9 @@ class MultiplexMemoryCommit(nn.Module):
         no_object = (
             (1 - appearing) * self.tracker.no_obj_embed_spatial.unsqueeze(0)
         ).sum(dim=1)
-        memory = memory + no_object[..., None, None]
+        memory = (memory + no_object[..., None, None]).to(
+            dtype=propagation_image.dtype
+        )
         return memory, position
 
 

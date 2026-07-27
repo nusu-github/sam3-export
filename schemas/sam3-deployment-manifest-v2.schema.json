@@ -322,7 +322,15 @@
         "id": { "$ref": "#/$defs/id" },
         "semantic_type": { "type": "string", "minLength": 1 },
         "dtype": {
-          "enum": ["float32", "float16", "bfloat16", "int64", "int32", "bool"]
+          "enum": [
+            "float32",
+            "float16",
+            "bfloat16",
+            "int64",
+            "int32",
+            "uint8",
+            "bool"
+          ]
         },
         "shape": {
           "type": "array",

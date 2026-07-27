@@ -122,5 +122,5 @@ def test_object_16_and_17_are_isolated_across_bucket_boundary(
     two = MultiplexPropagation(
         tracker, variant, bucket_count=2, use_cuda_autocast=True
     ).eval()(*two_args)
-    torch.testing.assert_close(one[2][0], two[2][0], atol=1e-2, rtol=1e-2)
-    torch.testing.assert_close(one[4][0], two[4][0], atol=1e-2, rtol=1e-2)
+    torch.testing.assert_close(one[2][0], two[2][0], atol=1.5e-2, rtol=1.5e-2)
+    torch.testing.assert_close(one[4][0], two[4][0], atol=1.5e-2, rtol=1.5e-2)

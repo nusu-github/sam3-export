@@ -1,0 +1,67 @@
+{
+  "fixture_version": "m5-sam31-multiplex-trajectory-v1",
+  "owner": "Export Tech Lead",
+  "official_source_commit": "cdff5a927beba49b6249c1e2973b29bd64f40b83",
+  "model_revision": "daa63191845a41281374e725f4c9e51c7a824460",
+  "checkpoint_sha256": "0567debeec80ba4ac6369540c6c248025283cb3ff2b92827509e57e2b3541cb6",
+  "frames": [
+    {
+      "path": "artifacts/sam3-base-video-tracking-ortcuda-v2/fixtures/frames/frame_000.png",
+      "sha256": "15e81917220838dc444f8ef05d4556ed3f8c0c889e1ba7f8c20ec73893f9197a"
+    },
+    {
+      "path": "artifacts/sam3-base-video-tracking-ortcuda-v2/fixtures/frames/frame_001.png",
+      "sha256": "fd5f1145e78ea94d222255b2d805d3593ffabe42138c143ececc3eee0b0056ff"
+    },
+    {
+      "path": "artifacts/sam3-base-video-tracking-ortcuda-v2/fixtures/frames/frame_002.png",
+      "sha256": "63b7dc44ab07da5724411a941b568076a0df2124b5702bde25746547bb60ce84"
+    }
+  ],
+  "object_points_xy_relative": [
+    [0.500, 0.550],
+    [0.450, 0.500],
+    [0.550, 0.500],
+    [0.450, 0.600],
+    [0.550, 0.600],
+    [0.400, 0.450],
+    [0.500, 0.450],
+    [0.600, 0.450],
+    [0.400, 0.550],
+    [0.600, 0.550],
+    [0.400, 0.650],
+    [0.500, 0.650],
+    [0.600, 0.650],
+    [0.350, 0.500],
+    [0.650, 0.500],
+    [0.500, 0.700]
+  ],
+  "active_slot_cases": [1, 2, 15, 16],
+  "two_bucket_cases": [17, 32],
+  "correction": {
+    "object_id": 100,
+    "frame_index": 1,
+    "points_xy_relative": [[0.500, 0.550], [0.580, 0.620]],
+    "point_labels": [1, 1]
+  },
+  "measurement": {
+    "dtype": "fp16",
+    "warmup": 2,
+    "repeats": 5,
+    "objects": [1, 16, 17],
+    "backend": "onnxruntime-1.27.0-cuda",
+    "handoff": "cuda-iobinding"
+  },
+  "profile_gate": {
+    "latency_ratio_maximum": 1.05,
+    "vram_ratio_maximum": 1.25,
+    "dynamic_artifact_size_must_not_exceed_fixed": true
+  },
+  "parity_thresholds": {
+    "task_mask_iou_minimum": 0.98,
+    "score_max_abs_maximum": 0.05,
+    "low_res_logit_mean_abs_maximum": 0.10,
+    "memory_mean_abs_maximum": 0.05,
+    "object_pointer_cosine_minimum": 0.999
+  }
+}

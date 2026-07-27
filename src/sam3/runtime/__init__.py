@@ -34,12 +34,17 @@ from .interactive_image import (
 )
 from .manifest import (
     BASE_VIDEO_PLAN_ID,
+    MULTIPLEX_VIDEO_PLAN_ID,
     CapabilityError,
     LegacyManifestError,
     ManifestError,
     PlanNotFoundError,
 )
 from .mask_ops import mask_iou, masks_to_boxes, resize_masks
+from .multiplex_video import (
+    MultiplexVideoSession,
+    create_multiplex_video_session,
+)
 from .nms import nms_masks
 from .video_io import list_jpeg_frames, load_video_frames_from_jpg
 
@@ -63,6 +68,8 @@ __all__ = [
     "PreviewHandleError",
     "LegacyManifestError",
     "ManifestError",
+    "MULTIPLEX_VIDEO_PLAN_ID",
+    "MultiplexVideoSession",
     "mask_iou",
     "masks_to_boxes",
     "resize_masks",
@@ -79,6 +86,7 @@ __all__ = [
     "VideoPrediction",
     "VideoPreview",
     "VideoStateError",
+    "create_multiplex_video_session",
     "list_jpeg_frames",
     "load_video_frames_from_jpg",
 ]

@@ -109,3 +109,13 @@ def test_manifest_v2_rejects_incompatible_capture_mode() -> None:
     errors = list(Draft202012Validator(schema).iter_errors(manifest))
 
     assert any(error.validator == "enum" for error in errors)
+
+
+def test_manifest_v2_requires_canonical_program_file_refs() -> None:
+    schema = _load(SCHEMA_PATH)
+    manifest = deepcopy(_load(VALID_FIXTURE_PATH))
+    del manifest["capture"]["program_file_refs"]  # type: ignore[index]
+
+    errors = list(Draft202012Validator(schema).iter_errors(manifest))
+
+    assert any(error.validator == "required" for error in errors)

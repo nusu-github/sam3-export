@@ -355,7 +355,9 @@ def _value_spec(value: Any) -> dict[str, Any]:
     return {"dtype": _onnx_dtype(value.type.tensor_type.elem_type), "shape": shape}
 
 
-def _graph_signatures(bundle_dir: Path, profile_id: str) -> dict[str, Any]:
+def _graph_signatures(
+    bundle_dir: Path, profile_id: str, export_graphs: dict[str, Any]
+) -> dict[str, Any]:
     graphs: dict[str, Any] = {}
     for role, filename in GRAPH_NAMES.items():
         model = onnx.load(bundle_dir / "graphs" / filename, load_external_data=False)
@@ -369,6 +371,7 @@ def _graph_signatures(bundle_dir: Path, profile_id: str) -> dict[str, Any]:
                 {"name": value.name, **_value_spec(value)}
                 for value in model.graph.output
             ],
+            "exported_program": export_graphs[role]["exported_program"],
         }
     return {
         "format": "sam3-base-video-graph-signatures-v1",
@@ -519,6 +522,7 @@ def _manifest(
         "reports/fused_cut_decision.json",
     }
     for signature in signatures["graphs"].values():
+        file_paths.add(signature["exported_program"]["program_path"])
         file_paths.add(signature["path"])
         if (bundle_dir / (signature["path"] + ".data")).is_file():
             file_paths.add(signature["path"] + ".data")
@@ -715,6 +719,10 @@ def _manifest(
                 "pointers=16",
             ],
             "graph_signature_file_ref": _file_id("capture/graph_signatures.json"),
+            "program_file_refs": [
+                _file_id(signature["exported_program"]["program_path"])
+                for signature in signatures["graphs"].values()
+            ],
             "strict_audit": {"status": "not-run", "report_file_ref": None},
         },
         "policies": [
@@ -929,6 +937,8 @@ def export_bundle(
             staging / "graphs" / GRAPH_NAMES["tracker-frame-encode"],
             FRAME_INPUTS,
             FRAME_OUTPUTS,
+            capture_path=staging / "capture/tracker-frame-encode.pt2",
+            capture_bundle_path="capture/tracker-frame-encode.pt2",
         )
         for role, module in (
             ("base-tracker-preview-multimask3", modules.preview_multimask3),
@@ -940,6 +950,8 @@ def export_bundle(
                 staging / "graphs" / GRAPH_NAMES[role],
                 PREVIEW_INPUTS,
                 PREVIEW_OUTPUTS,
+                capture_path=staging / "capture" / f"{role}.pt2",
+                capture_bundle_path=f"capture/{role}.pt2",
             )
         commit_args = (
             args[0],
@@ -953,6 +965,8 @@ def export_bundle(
             staging / "graphs" / GRAPH_NAMES["base-memory-commit"],
             COMMIT_INPUTS,
             COMMIT_OUTPUTS,
+            capture_path=staging / "capture/base-memory-commit.pt2",
+            capture_bundle_path="capture/base-memory-commit.pt2",
         )
         export_report["graphs"]["base-tracker-step-and-commit-single1"] = _export_one(
             modules.step_and_commit_single1,
@@ -960,6 +974,8 @@ def export_bundle(
             staging / "graphs" / GRAPH_NAMES["base-tracker-step-and-commit-single1"],
             PREVIEW_INPUTS,
             FUSED_OUTPUTS,
+            capture_path=(staging / "capture/base-tracker-step-and-commit-single1.pt2"),
+            capture_bundle_path=("capture/base-tracker-step-and-commit-single1.pt2"),
         )
         graph_sizes = {
             role: int(record["size_bytes"])
@@ -985,7 +1001,7 @@ def export_bundle(
         (staging / "reports/export_report.json").write_text(
             json.dumps(export_report, indent=2) + "\n", encoding="utf-8"
         )
-        signatures = _graph_signatures(staging, profile_id)
+        signatures = _graph_signatures(staging, profile_id, export_report["graphs"])
         (staging / "capture/graph_signatures.json").write_text(
             json.dumps(signatures, indent=2) + "\n", encoding="utf-8"
         )

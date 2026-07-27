@@ -13,12 +13,15 @@ from jsonschema import Draft202012Validator
 MANIFEST_FORMAT_V1 = "sam3-split-onnx-v1"
 MANIFEST_FORMAT_V2 = "sam3-deployment-manifest-v2"
 DEFAULT_PLAN_ID = "sam3_base_image_pcs_text_ortcuda_v1"
+AOTINDUCTOR_PLAN_ID = "sam3_base_image_pcs_text_aotinductor_cuda_v1"
 SELECTED_K32_PLAN_ID = "sam3_base_image_pcs_text_ortcuda_selected_k32_v1"
 SPLIT_PLAN_ID = "sam3_base_image_pcs_text_ortcuda_split_v1"
 INTERACTIVE_PLAN_ID = "sam3_base_interactive_image_pvs_ortcuda_v1"
 BASE_VIDEO_PLAN_ID = "sam3_base_video_tracking_ortcuda_v1"
 MULTIPLEX_VIDEO_PLAN_ID = "sam3_1_multiplex_video_tracking_ortcuda_v1"
-IMAGE_PCS_PLAN_IDS = frozenset({DEFAULT_PLAN_ID, SELECTED_K32_PLAN_ID, SPLIT_PLAN_ID})
+IMAGE_PCS_PLAN_IDS = frozenset(
+    {DEFAULT_PLAN_ID, AOTINDUCTOR_PLAN_ID, SELECTED_K32_PLAN_ID, SPLIT_PLAN_ID}
+)
 INTERACTIVE_PLAN_IDS = frozenset({INTERACTIVE_PLAN_ID})
 BASE_VIDEO_PLAN_IDS = frozenset({BASE_VIDEO_PLAN_ID})
 MULTIPLEX_VIDEO_PLAN_IDS = frozenset({MULTIPLEX_VIDEO_PLAN_ID})
@@ -190,6 +193,11 @@ def _validate_references(manifest: dict[str, Any], bundle_dir: Path) -> None:
 
     capture_ref = manifest["capture"]["graph_signature_file_ref"]
     _require_refs([capture_ref], files, "capture graph signature")
+    _require_refs(
+        manifest["capture"]["program_file_refs"],
+        files,
+        "capture exported programs",
+    )
     for fixture in manifest["fixtures"]:
         report_refs = [
             item["report_file_ref"]
@@ -220,15 +228,23 @@ def _validate_files(manifest: dict[str, Any], bundle_dir: Path) -> None:
 
 
 def _validate_capabilities(manifest: dict[str, Any]) -> None:
-    if manifest["backend"]["kind"] != "onnx-runtime":
-        raise CapabilityError("shipped plans support only ONNX Runtime")
-    required = {"device-resident-handoff", "iobinding", "external-data"}
+    kind = manifest["backend"]["kind"]
+    required = {"device-resident-handoff"}
+    if kind == "onnx-runtime":
+        required |= {"iobinding", "external-data"}
+    elif kind != "aotinductor":
+        raise CapabilityError(f"unsupported backend kind: {kind}")
     available = set(manifest["backend"]["capabilities"])
     missing = sorted(required - available)
     if missing:
         raise CapabilityError(f"manifest lacks required capabilities: {missing}")
-    if manifest["backend"]["execution_provider"] != "CUDAExecutionProvider":
-        raise CapabilityError("shipped plans require CUDAExecutionProvider")
+    expected_provider = (
+        "CUDAExecutionProvider" if kind == "onnx-runtime" else "TorchInductorCUDA"
+    )
+    if manifest["backend"]["execution_provider"] != expected_provider:
+        raise CapabilityError(
+            f"{kind} plan requires execution provider {expected_provider}"
+        )
 
 
 def validate_manifest_package(
@@ -289,6 +305,7 @@ def resolve_plan(bundle_dir: str | Path, plan_id: str) -> ResolvedPlan:
 
 
 __all__ = [
+    "AOTINDUCTOR_PLAN_ID",
     "CapabilityError",
     "BASE_VIDEO_PLAN_ID",
     "BASE_VIDEO_PLAN_IDS",

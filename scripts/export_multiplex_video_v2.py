@@ -326,6 +326,8 @@ def _export_one(
     output_names: list[str],
     *,
     dynamic_kind: str | None = None,
+    capture_path: Path | None = None,
+    capture_bundle_path: str | None = None,
 ) -> dict[str, Any]:
     module.eval()
     cloned = tuple(value.detach().clone() for value in args)
@@ -345,6 +347,20 @@ def _export_one(
         if isinstance(exported_outputs, tuple)
         else (exported_outputs,),
     )
+    capture: dict[str, Any] | None = None
+    if capture_path is not None:
+        if capture_bundle_path is None:
+            raise ValueError("capture_bundle_path is required with capture_path")
+        from capture_utils import save_exported_program
+
+        capture = save_exported_program(
+            exported,
+            capture_path,
+            bundle_path=capture_bundle_path,
+            input_names=input_names,
+            output_names=output_names,
+            mode="non-strict",
+        )
     torch.onnx.export(
         exported,
         (),
@@ -357,7 +373,7 @@ def _export_one(
         optimize=False,
     )
     onnx.checker.check_model(path)
-    return {
+    report = {
         "capture_mode": (
             "torch.export strict=False; bucket_count=1..2"
             if dynamic_kind is not None
@@ -366,6 +382,9 @@ def _export_one(
         "eager_to_exported_program": parity,
         **_artifact_record(path),
     }
+    if capture is not None:
+        report["exported_program"] = capture
+    return report
 
 
 def _candidate_names(dynamic: bool, bucket_count: int | None = None) -> dict[str, str]:
@@ -458,6 +477,8 @@ def _export_candidate(
             PROPAGATION_INPUTS,
             PROPAGATION_OUTPUTS,
             dynamic_kind=kind("propagation"),
+            capture_path=target / "capture" / f"{Path(names['propagation']).stem}.pt2",
+            capture_bundle_path=(f"capture/{Path(names['propagation']).stem}.pt2"),
         ),
         "memory": _export_one(
             memory_module,
@@ -466,6 +487,8 @@ def _export_candidate(
             MEMORY_INPUTS,
             MEMORY_OUTPUTS,
             dynamic_kind=kind("memory"),
+            capture_path=target / "capture" / f"{Path(names['memory']).stem}.pt2",
+            capture_bundle_path=f"capture/{Path(names['memory']).stem}.pt2",
         ),
         "scatter": _export_one(
             scatter_module,
@@ -474,6 +497,8 @@ def _export_candidate(
             SCATTER_INPUTS,
             SCATTER_OUTPUTS,
             dynamic_kind=kind("scatter"),
+            capture_path=target / "capture" / f"{Path(names['scatter']).stem}.pt2",
+            capture_bundle_path=f"capture/{Path(names['scatter']).stem}.pt2",
         ),
     }
 
@@ -804,7 +829,10 @@ def _value_spec(value: Any) -> dict[str, Any]:
 
 
 def _graph_signatures(
-    bundle_dir: Path, role_names: dict[str, str], profile_id: str
+    bundle_dir: Path,
+    role_names: dict[str, str],
+    profile_id: str,
+    capture_reports: dict[str, Any],
 ) -> dict[str, Any]:
     graphs: dict[str, Any] = {}
     for role, filename in role_names.items():
@@ -819,6 +847,7 @@ def _graph_signatures(
                 {"name": value.name, **_value_spec(value)}
                 for value in model.graph.output
             ],
+            "exported_program": capture_reports[role]["exported_program"],
         }
     return {
         "format": "sam3-multiplex-video-graph-signatures-v1",
@@ -1217,6 +1246,10 @@ def _manifest(
                 "pointer-frames=16",
             ],
             "graph_signature_file_ref": _file_id("capture/graph_signatures.json"),
+            "program_file_refs": [
+                _file_id(signature["exported_program"]["program_path"])
+                for signature in signatures["graphs"].values()
+            ],
             "strict_audit": {"status": "not-run", "report_file_ref": None},
         },
         "policies": [
@@ -1457,18 +1490,30 @@ def export_bundle(
         selected_roles = dict(COMMON_GRAPH_NAMES)
         if decision == "bounded-dynamic":
             selected = dynamic_dir
+            selected_candidate_reports = dynamic_report
             for operation, filename in _candidate_names(True).items():
                 role = f"multiplex-{_operation_role(operation)}"
                 selected_roles[role] = filename
                 for source in selected.glob(filename + "*"):
                     _copy_file(source, staging / "graphs" / source.name)
+                capture_name = f"{Path(filename).stem}.pt2"
+                _copy_file(
+                    selected / "capture" / capture_name,
+                    staging / "capture" / capture_name,
+                )
         else:
             selected = fixed_dir
+            selected_candidate_reports = fixed_report["bucket1"]
             for operation, filename in _candidate_names(False, 1).items():
                 role = f"multiplex-{_operation_role(operation)}-bucket1"
                 selected_roles[role] = filename
                 for source in selected.glob(filename + "*"):
                     _copy_file(source, staging / "graphs" / source.name)
+                capture_name = f"{Path(filename).stem}.pt2"
+                _copy_file(
+                    selected / "capture" / capture_name,
+                    staging / "capture" / capture_name,
+                )
 
         common_report: dict[str, Any] = {}
         common_report["multiplex-frame-encode"] = _export_one(
@@ -1477,6 +1522,8 @@ def export_bundle(
             staging / "graphs" / COMMON_GRAPH_NAMES["multiplex-frame-encode"],
             FRAME_INPUTS,
             FRAME_OUTPUTS,
+            capture_path=staging / "capture/multiplex-frame-encode.pt2",
+            capture_bundle_path="capture/multiplex-frame-encode.pt2",
         )
         preview_args = (
             encoded[0],
@@ -1500,7 +1547,17 @@ def export_bundle(
                 staging / "graphs" / COMMON_GRAPH_NAMES[role],
                 PREVIEW_INPUTS,
                 PREVIEW_OUTPUTS,
+                capture_path=staging / "capture" / f"{role}.pt2",
+                capture_bundle_path=f"capture/{role}.pt2",
             )
+        released_reports = dict(common_report)
+        for operation, report in selected_candidate_reports.items():
+            role = (
+                f"multiplex-{_operation_role(operation)}"
+                if decision == "bounded-dynamic"
+                else f"multiplex-{_operation_role(operation)}-bucket1"
+            )
+            released_reports[role] = report
         export_report = {
             "format": "m5-sam31-multiplex-export-report-v1",
             "profile_id": profile_id,
@@ -1511,11 +1568,14 @@ def export_bundle(
             "fixed_candidates": fixed_report,
             "bounded_dynamic_candidate": dynamic_report,
             "common_graphs": common_report,
+            "released_graphs": released_reports,
         }
         (staging / "reports/export_report.json").write_text(
             json.dumps(export_report, indent=2) + "\n", encoding="utf-8"
         )
-        signatures = _graph_signatures(staging, selected_roles, profile_id)
+        signatures = _graph_signatures(
+            staging, selected_roles, profile_id, released_reports
+        )
         (staging / "capture/graph_signatures.json").write_text(
             json.dumps(signatures, indent=2) + "\n", encoding="utf-8"
         )

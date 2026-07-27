@@ -328,6 +328,9 @@ def _export_one(
     path: Path,
     input_names: list[str],
     output_names: list[str],
+    *,
+    capture_path: Path | None = None,
+    capture_bundle_path: str | None = None,
 ) -> dict[str, Any]:
     module.eval()
     args = tuple(value.detach().clone() for value in args)
@@ -336,6 +339,20 @@ def _export_one(
         exported_program = export(module, args, strict=False)
         ep_outputs = _as_tuple(exported_program.module()(*args))
     ep_parity = _parity(eager, ep_outputs)
+    capture: dict[str, Any] | None = None
+    if capture_path is not None:
+        if capture_bundle_path is None:
+            raise ValueError("capture_bundle_path is required with capture_path")
+        from capture_utils import save_exported_program
+
+        capture = save_exported_program(
+            exported_program,
+            capture_path,
+            bundle_path=capture_bundle_path,
+            input_names=input_names,
+            output_names=output_names,
+            mode="non-strict",
+        )
     torch.onnx.export(
         exported_program,
         (),
@@ -348,11 +365,14 @@ def _export_one(
         optimize=False,
     )
     onnx.checker.check_model(path)
-    return {
+    report = {
         "capture_mode": "torch.export strict=False; static profile",
         "eager_to_exported_program": ep_parity,
         **_artifact_record(path),
     }
+    if capture is not None:
+        report["exported_program"] = capture
+    return report
 
 
 def _mask_iou(expected: np.ndarray, actual: np.ndarray) -> float:

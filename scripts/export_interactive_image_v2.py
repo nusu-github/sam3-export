@@ -353,7 +353,9 @@ def _value_spec(value: Any) -> dict[str, Any]:
     return {"dtype": _onnx_dtype(value.type.tensor_type.elem_type), "shape": shape}
 
 
-def _graph_signatures(bundle_dir: Path) -> dict[str, Any]:
+def _graph_signatures(
+    bundle_dir: Path, export_graphs: dict[str, Any]
+) -> dict[str, Any]:
     graphs: dict[str, Any] = {}
     for role, filename in GRAPH_NAMES.items():
         model = onnx.load(bundle_dir / "graphs" / filename, load_external_data=False)
@@ -367,6 +369,7 @@ def _graph_signatures(bundle_dir: Path) -> dict[str, Any]:
                 {"name": value.name, **_value_spec(value)}
                 for value in model.graph.output
             ],
+            "exported_program": export_graphs[role]["exported_program"],
         }
     return {
         "format": "sam3-interactive-image-graph-signatures-v1",
@@ -501,6 +504,7 @@ def _manifest(
         "reports/cut_measurement.json",
     }
     for signature in signatures["graphs"].values():
+        file_paths.add(signature["exported_program"]["program_path"])
         file_paths.add(signature["path"])
         if (bundle_dir / (signature["path"] + ".data")).is_file():
             file_paths.add(signature["path"] + ".data")
@@ -644,6 +648,10 @@ def _manifest(
                 "mask=288x288",
             ],
             "graph_signature_file_ref": _file_id("capture/graph_signatures.json"),
+            "program_file_refs": [
+                _file_id(signature["exported_program"]["program_path"])
+                for signature in signatures["graphs"].values()
+            ],
             "strict_audit": {"status": "not-run", "report_file_ref": None},
         },
         "policies": [
@@ -841,6 +849,8 @@ def export_bundle(
             staging / "graphs" / GRAPH_NAMES["interactive-image-encode-initial"],
             ["pixel_values"],
             ["image_embedding", "high_res_0", "high_res_1"],
+            capture_path=staging / "capture/interactive-image-encode-initial.pt2",
+            capture_bundle_path="capture/interactive-image-encode-initial.pt2",
         )
         predict_input_names = [
             "image_embedding",
@@ -858,11 +868,13 @@ def export_bundle(
                 staging / "graphs" / GRAPH_NAMES[role],
                 predict_input_names,
                 ["low_res_logits", "scores"],
+                capture_path=staging / "capture" / f"{role}.pt2",
+                capture_bundle_path=f"capture/{role}.pt2",
             )
         (staging / "reports/export_report.json").write_text(
             json.dumps(export_report, indent=2) + "\n", encoding="utf-8"
         )
-        signatures = _graph_signatures(staging)
+        signatures = _graph_signatures(staging, export_report["graphs"])
         (staging / "capture/graph_signatures.json").write_text(
             json.dumps(signatures, indent=2) + "\n", encoding="utf-8"
         )

@@ -168,6 +168,7 @@
     "exporter_version": "1.0",
     "constraints": [],
     "graph_signature_file_ref": "graph-signature",
+    "program_file_refs": ["capture-program"],
     "strict_audit": {
       "status": "not-run",
       "report_file_ref": null
@@ -252,6 +253,16 @@
       "digest": {
         "algorithm": "sha256",
         "value": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+      }
+    },
+    {
+      "id": "capture-program",
+      "path": "capture/detector-image-encode.pt2",
+      "role": "capture",
+      "size_bytes": 64,
+      "digest": {
+        "algorithm": "sha256",
+        "value": "123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0"
       }
     }
   ]

@@ -25,6 +25,7 @@ from sam3.runtime import (
 )
 from sam3.runtime.image_pcs import _BackendPrediction
 from sam3.runtime.manifest import (
+    AOTINDUCTOR_PLAN_ID,
     DEFAULT_PLAN_ID,
     SELECTED_K32_PLAN_ID,
     SPLIT_PLAN_ID,
@@ -179,6 +180,39 @@ def test_package_hash_and_required_capability_are_validated(bundle: Path) -> Non
     (missing_bundle / missing_record["path"]).unlink()
     with pytest.raises(ManifestError, match="file is missing"):
         validate_manifest_package(missing_manifest)
+
+
+def test_aotinductor_candidate_uses_the_same_public_api(bundle: Path) -> None:
+    source_path = bundle / "manifests" / f"{DEFAULT_PLAN_ID}.json"
+    manifest = json.loads(source_path.read_text(encoding="utf-8"))
+    manifest["manifest_id"] = "aotinductor-evaluation-manifest-v2"
+    manifest["plan"]["id"] = AOTINDUCTOR_PLAN_ID
+    manifest["scope"]["lifecycle"] = "candidate"
+    manifest["scope"]["dispatch_role"] = "optional"
+    manifest["backend"] = {
+        "kind": "aotinductor",
+        "target": "CUDA device 0",
+        "execution_provider": "TorchInductorCUDA",
+        "runtime_version": "2.13.0",
+        "pytorch_version": "2.13.0",
+        "exporter_version": "2.13.0",
+        "opset": None,
+        "capabilities": ["device-resident-handoff"],
+    }
+    manifest_path = bundle / "manifests" / f"{AOTINDUCTOR_PLAN_ID}.json"
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+
+    resolved = validate_manifest_package(
+        manifest_path, expected_plan_id=AOTINDUCTOR_PLAN_ID
+    )
+    assert resolved.manifest["backend"]["kind"] == "aotinductor"
+
+    session = create_image_session(AOTINDUCTOR_PLAN_ID, bundle_dir=bundle)
+    session.set_image(Image.new("RGB", (8, 6), "red"))
+    session.set_text("a wheel")
+    prediction = session.predict_text()
+    assert prediction.metadata["plan_id"] == AOTINDUCTOR_PLAN_ID
+    session.close()
 
 
 def test_missing_binding_reference_and_fallback_are_rejected(bundle: Path) -> None:

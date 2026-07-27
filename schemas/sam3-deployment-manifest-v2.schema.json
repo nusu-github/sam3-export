@@ -104,7 +104,7 @@
       ],
       "properties": {
         "classification": { "const": "public-deployment" },
-        "lifecycle": { "const": "shipped" },
+        "lifecycle": { "enum": ["shipped", "candidate"] },
         "dispatch_role": {
           "enum": ["default", "optional", "fallback"]
         },
@@ -510,6 +510,7 @@
         "exporter_version",
         "constraints",
         "graph_signature_file_ref",
+        "program_file_refs",
         "strict_audit"
       ],
       "properties": {
@@ -522,6 +523,12 @@
           "items": { "type": "string", "minLength": 1 }
         },
         "graph_signature_file_ref": { "$ref": "#/$defs/id" },
+        "program_file_refs": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/id" }
+        },
         "strict_audit": {
           "type": "object",
           "additionalProperties": false,

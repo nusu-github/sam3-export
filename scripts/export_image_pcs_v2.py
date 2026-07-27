@@ -199,7 +199,9 @@ def _value_spec(value: Any) -> dict[str, Any]:
     return {"dtype": _onnx_dtype(tensor_type.elem_type), "shape": shape}
 
 
-def _graph_signatures(bundle_dir: Path) -> dict[str, Any]:
+def _graph_signatures(
+    bundle_dir: Path, export_graphs: dict[str, Any]
+) -> dict[str, Any]:
     graphs: dict[str, Any] = {}
     for role, name in GRAPH_NAMES.items():
         model = onnx.load(bundle_dir / "graphs" / name, load_external_data=False)
@@ -213,6 +215,7 @@ def _graph_signatures(bundle_dir: Path) -> dict[str, Any]:
                 {"name": value.name, **_value_spec(value)}
                 for value in model.graph.output
             ],
+            "exported_program": export_graphs[role]["exported_program"],
         }
     return {
         "format": "sam3-image-pcs-graph-signatures-v1",
@@ -242,6 +245,10 @@ def _file_role(path: str) -> str:
         return "fixture"
     if path.endswith("graph_signatures.json"):
         return "graph-signature"
+    if path.startswith("capture/") and path.endswith(".pt2"):
+        return "capture"
+    if path.startswith("packages/") and path.endswith(".pt2"):
+        return "graph"
     if path.endswith("export_report.json"):
         return "export-report"
     return "parity-report"
@@ -484,6 +491,7 @@ def _manifest(
     for image in metadata["fixtures"]["images"]:
         file_paths.add(f"fixtures/images/{Path(image['workspace_path']).name}")
     for role in recipe["roles"]:
+        file_paths.add(signatures["graphs"][role]["exported_program"]["program_path"])
         graph_path = signatures["graphs"][role]["path"]
         file_paths.add(graph_path)
         external_path = graph_path + ".data"
@@ -638,6 +646,10 @@ def _manifest(
                 "queries=200",
             ],
             "graph_signature_file_ref": _file_id("capture/graph_signatures.json"),
+            "program_file_refs": [
+                _file_id(signatures["graphs"][role]["exported_program"]["program_path"])
+                for role in recipe["roles"]
+            ],
             "strict_audit": {"status": "not-run", "report_file_ref": None},
         },
         "policies": [
@@ -844,6 +856,8 @@ def export_bundle(
             graphs_dir / GRAPH_NAMES["detector-image-encode"],
             ["pixel_values"],
             ["image_feature_0", "image_feature_1", "image_feature_2", "image_pos_2"],
+            capture_path=staging / "capture/detector-image-encode.pt2",
+            capture_bundle_path="capture/detector-image-encode.pt2",
         )
         export_report["graphs"]["text-encode"] = _export_one(
             text,
@@ -851,6 +865,8 @@ def export_bundle(
             graphs_dir / GRAPH_NAMES["text-encode"],
             ["input_ids", "attention_mask"],
             ["text_memory", "text_padding_mask"],
+            capture_path=staging / "capture/text-encode.pt2",
+            capture_bundle_path="capture/text-encode.pt2",
         )
         common_args = (
             *vision_outputs[:3],
@@ -872,6 +888,8 @@ def export_bundle(
                 "text_padding_mask",
             ],
             output_names,
+            capture_path=staging / "capture/grounding-full.pt2",
+            capture_bundle_path="capture/grounding-full.pt2",
         )
         export_report["graphs"]["grounding-encode"] = _export_one(
             encoder_flat,
@@ -885,6 +903,8 @@ def export_bundle(
                 "text_padding_mask",
             ],
             encoder_output_names,
+            capture_path=staging / "capture/grounding-encode.pt2",
+            capture_bundle_path="capture/grounding-encode.pt2",
         )
         export_report["graphs"]["grounding-decode"] = _export_one(
             decoder_flat,
@@ -897,6 +917,8 @@ def export_bundle(
                 *encoder_output_names,
             ],
             output_names,
+            capture_path=staging / "capture/grounding-decode.pt2",
+            capture_bundle_path="capture/grounding-decode.pt2",
         )
         export_report["graphs"]["grounding-query-core"] = _export_one(
             query_flat,
@@ -914,6 +936,8 @@ def export_bundle(
                 "prompt_padding_mask",
             ],
             ["logits", "boxes_cxcywh", "presence_logits", "query_embeddings"],
+            capture_path=staging / "capture/grounding-query-core.pt2",
+            capture_bundle_path="capture/grounding-query-core.pt2",
         )
         indices = torch.arange(SELECTED_K, device="cuda", dtype=torch.int64).unsqueeze(
             0
@@ -943,6 +967,8 @@ def export_bundle(
                 "valid_mask",
             ],
             ["selected_mask_logits"],
+            capture_path=staging / "capture/grounding-mask-selected-k32.pt2",
+            capture_bundle_path="capture/grounding-mask-selected-k32.pt2",
         )
 
         _copy_file(Path("LICENSE"), staging / "LICENSE")
@@ -994,8 +1020,7 @@ def export_bundle(
             + "\n",
             encoding="utf-8",
         )
-        signatures = _graph_signatures(staging)
-        (staging / "capture").mkdir()
+        signatures = _graph_signatures(staging, export_report["graphs"])
         (staging / "capture" / "graph_signatures.json").write_text(
             json.dumps(signatures, indent=2) + "\n", encoding="utf-8"
         )

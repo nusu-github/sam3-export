@@ -15,6 +15,7 @@ from torch.nn import functional as F
 
 from sam3.grounding.tokenizer_ve import SimpleTokenizer
 from sam3.runtime.manifest import (
+    AOTINDUCTOR_PLAN_ID,
     DEFAULT_PLAN_ID,
     IMAGE_PCS_PLAN_IDS,
     SELECTED_K32_PLAN_ID,
@@ -333,7 +334,7 @@ class _OrtCudaAdapter:
         text = text_cache
         if not isinstance(image, dict) or not isinstance(text, dict):
             raise TypeError("invalid ORT cache state")
-        if self._plan.plan_id == DEFAULT_PLAN_ID:
+        if self._plan.plan_id in {DEFAULT_PLAN_ID, AOTINDUCTOR_PLAN_ID}:
             return self._predict_default(image, text)
         if self._plan.plan_id == SPLIT_PLAN_ID:
             return self._predict_split(image, text)
@@ -346,7 +347,80 @@ class _OrtCudaAdapter:
         self._constant_image_mask = None
 
 
-_adapter_factory: Any = _OrtCudaAdapter
+class _AOTInductorCudaAdapter(_OrtCudaAdapter):
+    """AOTInductor CUDA adapter with the same semantic image PCS ABI."""
+
+    def __init__(self, plan: ResolvedPlan) -> None:
+        if not torch.cuda.is_available():
+            raise CapabilityError("CUDA is unavailable for AOTInductor")
+        self._plan = plan
+        self.counters = {
+            "image_encodes": 0,
+            "text_encodes": 0,
+            "session_launches": 0,
+            "d2h_bytes": 0,
+            "h2d_bytes": 0,
+            "mask_skips": 0,
+        }
+        self._artifacts = plan.artifacts_by_role
+        self._files = {
+            record["id"]: plan.bundle_dir / record["path"]
+            for record in plan.manifest["files"]
+        }
+        try:
+            self._sessions = {
+                role: torch._inductor.aoti_load_package(  # type: ignore[attr-defined]
+                    self._files[artifact["entry_file_ref"]]
+                )
+                for role, artifact in self._artifacts.items()
+            }
+        except (OSError, RuntimeError) as exc:
+            raise CapabilityError("AOTInductor package could not be loaded") from exc
+        self._constant_image_mask = self._upload(np.zeros((1, 72, 72), dtype=np.bool_))
+
+    def _upload(self, values: np.ndarray) -> torch.Tensor:
+        contiguous = np.ascontiguousarray(values)
+        self.counters["h2d_bytes"] += contiguous.nbytes
+        return torch.from_numpy(contiguous).to("cuda")
+
+    def _run(
+        self, role: str, inputs: dict[str, torch.Tensor]
+    ) -> dict[str, torch.Tensor]:
+        artifact = self._artifacts[role]
+        expected = [item["tensor_ref"] for item in artifact["inputs"]]
+        missing = sorted(set(expected) - set(inputs))
+        extra = sorted(set(inputs) - set(expected))
+        if missing or extra:
+            raise CapabilityError(
+                f"AOTInductor binding mismatch for {role}: "
+                f"missing={missing} extra={extra}"
+            )
+        raw = self._sessions[role](*[inputs[name] for name in expected])
+        self.counters["session_launches"] += 1
+        values = list(raw) if isinstance(raw, (tuple, list)) else [raw]
+        if any(not isinstance(value, torch.Tensor) for value in values):
+            raise CapabilityError(f"AOTInductor returned non-tensor output for {role}")
+        if any(value.device.type != "cuda" for value in values):
+            raise CapabilityError(f"AOTInductor output left CUDA for {role}")
+        refs = [item["tensor_ref"] for item in artifact["outputs"]]
+        if len(refs) != len(values):
+            raise CapabilityError(
+                f"AOTInductor output count mismatch for {role}: "
+                f"{len(values)} != {len(refs)}"
+            )
+        return dict(zip(refs, values))
+
+    def _to_numpy(self, value: torch.Tensor) -> np.ndarray:
+        result = value.detach().cpu().numpy()
+        self.counters["d2h_bytes"] += result.nbytes
+        return result
+
+    def close(self) -> None:
+        self._sessions.clear()
+        self._constant_image_mask = None
+
+
+_adapter_factory: Any = None
 
 
 def _hash_parts(*parts: bytes) -> str:
@@ -593,7 +667,14 @@ def create_image_session(plan_id: str, *, bundle_dir: str | Path) -> ImagePCSSes
     resolved = resolve_plan(bundle_dir, plan_id)
     if resolved.manifest["scope"]["use_case"] != "image-pcs":
         raise ManifestError(f"plan scope mismatch: {plan_id} is not image-pcs")
-    adapter = _adapter_factory(resolved)
+    factory = _adapter_factory
+    if factory is None:
+        factory = (
+            _AOTInductorCudaAdapter
+            if resolved.manifest["backend"]["kind"] == "aotinductor"
+            else _OrtCudaAdapter
+        )
+    adapter = factory(resolved)
     LOGGER.info(
         "created image PCS session plan_id=%s manifest_sha256=%s "
         "contract=%s profile=%s dispatch_role=%s",
